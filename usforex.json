@@ -1,0 +1,15 @@
+{
+  "aliases" : {},
+  "mappings" : {
+    "currency_rate" : {
+      "properties" : {
+        "month" :     { "type" : "date" },
+        "rate" :      { "type" : "float" },
+        "from" :      { "type" : "string" },
+        "to" :        { "type" : "string" }
+      }
+    }
+  },
+  "settings" : {},
+  "warmers" : {}
+ }
