@@ -40,21 +40,20 @@ def run_cmd(cmd, echo=true, output=false)
   puts "#{out}" unless output == false
 end
 
-# There are the following scenarions that we want to be able to support
+# There are the following scenarios that we want to be able to support
 #
 # - Complete refresh of the [Harvest] cache (--cache-reload)
-# - Update the [Harvest] cache (--cache-update-all)
+# - Update all of the [Harvest] cache (--cache-update-all)
 # - Update the specified type in the cache (--cache_update -t <type> [--year --month-num])
 # - Completely reconstruct the elasticsearch index (--rebuild-index)
 # - Update the elasticsearch index with recent changes (--update-es-all)
-# - Update the specified type in the elasticsearch index with recent changes (--uppate-es -t <type>)
+# - Update the specified type in the elasticsearch index with recent changes (--update-es -t <type> [--year --month-num])
 #
-# Should probably write a method for each and use a bit of code to select between them
 
 def cache_update(opt)
   harvest = get_harvest_handle(opt)
   esu = get_esu_handle(opt)
-  esu.set_harvest(harvest)
+  esu.set_harvest(harvest[0], harvest[1])
   year = opt.year ? opt.year.to_i : 2015
   month = opt.month ? opt.month.to_i : 1
   puts "cache_update('#{opt.type}')"
@@ -63,40 +62,17 @@ def cache_update(opt)
 end
 
 def cache_update_all(opt)
-  stypes = ESUtils.class_eval("@@stypes")
-  ctypes = ESUtils.class_eval("@@ctypes")
-  # Iterate over all types - can squash into opt's
-  opt.send("year=", 2015)
-  opt.send("month=", 1)
-  stypes.each do |type|
-    opt.send("type=", type)
-    puts "cache_update('#{opt.type}', '#{opt.year}', '#{opt.month}')"
-    cache_update(opt)
-    sleep(60)
-  end
-  # Want an array of all years and months
-  start = Date.new(2014, 10, 1)
-  today = Date.today
-  months = setup_months(start, today)[-3..-1]
-  ctypes.each do |type|
-    opt.send("type=", type)
-    months.each do |month|
-      opt.send("year=", month[:year])
-      opt.send("month=", month[:month])
-      puts "cache_update('#{opt.type}', '#{opt.year}', '#{opt.month}')"
-      cache_update(opt)
-      sleep(60)
-    end
-    sleep(60) if type != ctypes.last
-  end
+  # Haven't seen a good way to implement 'update_all' as yet
+  cache_reload(opt)
 end
 
 def cache_reload(opt)
   stypes = ESUtils.class_eval("@@stypes")
   ctypes = ESUtils.class_eval("@@ctypes")
-  # Iterate over all types - can squash into opt's
-  opt.send("year=", 2015)
-  opt.send("month=", 1)
+  # Iterate over all types - can pass via opt.type
+  # stypes are not date sensitive
+  opt.send("year=", 2015) # Just to say that we have sent something
+  opt.send("month=", 1)   # Just to say that we have sent something
   stypes.each do |type|
     opt.send("type=", type)
     puts "cache_update('#{opt.type}', #{opt.year}, #{opt.month})"
@@ -126,7 +102,13 @@ def update_es(opt)
   ctypes = ESUtils.class_eval("@@ctypes")
   esu = get_esu_handle(opt)
   init_elasticsearch(opt, esu)
+  year = opt.year ? opt.year.to_i : 2015
+  month = opt.month ? opt.month.to_i : 1
   # Last 3 months
+  puts "update_es('#{opt.type}')"
+  puts "index_outdated_#{opt.type}s('#{opt.index}', #{year}, #{month})"
+  esu.instance_eval("index_outdated_#{opt.type}s('#{opt.index}', year, month)")
+=begin
   if stypes.include?(opt.type)
     puts "update_es('#{opt.type}')"
     esu.instance_eval("index_outdated_#{opt.type}s('#{opt.index}')")
@@ -142,6 +124,7 @@ def update_es(opt)
       sleep(60) if month != months.last
     end
   end
+=end
 end
 
 def update_es_all(opt)

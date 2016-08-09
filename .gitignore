@@ -10,13 +10,15 @@
 /test/version_tmp/
 /tmp/
 
-.es*
+.esconfig
+.esutils
 .harvest
 .kibanacfg
+kibana.sh
 harvest-*/
 !harvest-uk/harvest-uk.json
 logs/
-kibana/
+kibana*/
 
 # Used by dotenv library to load environment variables.
 # .env

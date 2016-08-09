@@ -9,6 +9,7 @@ require 'harvested'
 require 'json'
 require 'pp'
 require 'yaml'
+require 'csv'
 
 class ESUtils
   
@@ -20,10 +21,17 @@ class ESUtils
   #class Harvest
   #end
   
-  def log(msg, method=nil)
+  def log(msg, method=nil, lineno=nil)
     now = DateTime.now.strftime("%Y-%m-%d %H:%M:%S.%L")    
-    @logfile.puts("#{now}: #{msg}") if method.nil?
-    @logfile.puts("#{now}: #{method}: #{msg}") if !method.nil?
+    logmsg = ""
+    if method.nil?
+      logmsg = "#{msg}"
+    else
+      mthd = method
+      mthd = "#{method}[#{lineno}]" if !lineno.nil?
+      logmsg = "#{mthd}: #{msg}"
+    end
+    @logfile.puts("#{now}: #{logmsg}")
   end
   
   def initialize(opt)
@@ -39,16 +47,18 @@ class ESUtils
     @task_id = {}
     @user_id = {}
     
-    self.log("Completed", __method__)
+    self.log("Completed", __method__, __LINE__)
     self.set_opt(opt)
   end
   
   def initialize_reverse_indexes(index)
+    self.log("Entering", __method__, __LINE__)
     self.setup_client_ids(index)            if @client_id.empty?
     self.setup_expense_category_ids(index)  if @expense_category_id.empty?
     self.setup_project_ids(index)           if @project_id.empty?
     self.setup_task_ids(index)              if @task_id.empty?
     self.setup_user_ids(index)              if @user_id.empty?
+    self.log("Completed", __method__, __LINE__)
     self
   end
   
@@ -57,8 +67,9 @@ class ESUtils
     @verbose = opt.verbose
   end
 
-  def set_harvest(hv)
-    @harvest = hv
+  def set_harvest(harvest, hv=nil)
+    @harvest = harvest
+    @hv = hv
   end
   
   def set_elasticsearch(idx, es)
@@ -69,83 +80,90 @@ class ESUtils
   
   def method_missing(*args)
     m = args.shift
-    self.log("Method called = #{m}", __method__)
+    self.log("Method called = #{m}", __method__, __LINE__)
     
     if type = m[/^setup_([a-z_]+)_ids$/,1] and @@stypes.include?(type)
 
       puts "method_missing: #{m}, #{type}" if @debug
-      self.log("  Extracted type = #{type}", __method__)
+      self.log("  Extracted type = #{type}", __method__, __LINE__)
       index = args.shift
       puts "Make call to setup_id_index('#{index}', '#{type}')" if @verbose
-      self.log("  Handing off to setup_id_index('#{index}', '#{type}')", __method__)
+      self.log("  Handing off to setup_id_index('#{index}', '#{type}')", __method__, __LINE__)
       self.setup_id_index(index, type)
       eval("pp @#{type}_id if @debug")
       
     elsif type = m[/^pull_([a-z_]+)s$/,1] and @@stypes.include?(type)
       
       puts "method_missing: #{m}, #{type}" if @debug
-      self.log("  Extracted type = #{type}", __method__)
+      self.log("  Extracted type = #{type}", __method__, __LINE__)
       index = args.shift
       puts "Make call to pull_type('#{index}', '#{type}')" if @verbose
-      self.log("  Handing off to pull_type('#{index}', '#{type}')", __method__)
+      self.log("  Handing off to pull_type('#{index}', '#{type}')", __method__, __LINE__)
       self.pull_type(index, type)
       
     elsif type = m[/^pull_([a-z_]+)s$/,1] and @@ctypes.include?(type)
       
       puts "method_missing: #{m}, #{type}" if @debug
-      self.log("  Extracted type = #{type}", __method__)
+      self.log("  Extracted type = #{type}", __method__, __LINE__)
       index = args.shift
       year = args.shift.to_i
       month = args.shift.to_i
       puts "Make call to pull_type_for_month('#{index}', '#{type}', #{year}, #{month})" if @verbose
-      self.log("  Handing off to pull_type_for_month('#{index}', '#{type}', #{year}, #{month})", __method__)
+      self.log("  Handing off to pull_type_for_month('#{index}', '#{type}', #{year}, #{month})", __method__, __LINE__)
       self.pull_type_for_month(index, type, year, month)
       
     elsif type = m[/^index_outdated_([a-z_]+)s$/,1] and @@stypes.include?(type)
       
       puts "method_missing: #{m}, #{type}" if @debug
-      self.log("  Extracted type = #{type}", __method__)
+      self.log("  Extracted type = #{type}", __method__, __LINE__)
       index = args.shift
       puts "Make call to index_outdated('#{index}', '#{type}')" if @verbose
-      self.log("  Handing off to index_outdated('#{index}', '#{type}')", __method__)
+      self.log("  Handing off to index_outdated('#{index}', '#{type}')", __method__, __LINE__)
       self.index_outdated(index, type)
 
     elsif type = m[/^index_outdated_([a-z_]+)s$/,1] and @@ctypes.include?(type)
       
       puts "method_missing: #{m}, #{type}" if @debug
-      self.log("  Extracted type = #{type}", __method__)
+      self.log("  Extracted type = #{type}", __method__, __LINE__)
       index = args.shift
       year = args.shift.to_i
       month = args.shift.to_i
       puts "Make call to index_outdated('#{index}', '#{type}', '#{year}', '#{month}')" if @verbose
-      self.log("  Handing off to index_outdated_for_month('#{index}', '#{type}', #{year}, #{month})", __method__)
-      self.index_outdated_for_month(index, type, year, month)
+      if type == 'invoice'
+        self.log("  Handing off to index_invoices('#{index}', '#{type}')", __method__, __LINE__)
+        self.index_invoices(index, type)
+      else
+        self.log("  Handing off to index_outdated_for_month('#{index}', '#{type}', #{year}, #{month})", __method__, __LINE__)
+        self.index_outdated_for_month(index, type, year, month)
+      end
 
+=begin      
     elsif type = m[/^index_([a-z_]+)s$/,1] and @@stypes.include?(type)
-
+      # Not absolutely sure that this option is required
       puts "method_missing: #{m}, #{type}" if @debug
-      self.log("  Extracted type = #{type}", __method__)
+      self.log("  Extracted type = #{type}", __method__, __LINE__)
       index = args.shift
       puts "Make call to index_type('#{index}', '#{type}')" if @verbose
-      self.log("  Handing off to index_type('#{index}', '#{type}')", __method__)
+      self.log("  Handing off to index_type('#{index}', '#{type}')", __method__, __LINE__)
       self.index_type(index, type)
-
+=end
+      
     else
       super
     end
-    self.log("Completed", __method__)
+    self.log("Completed", __method__, __LINE__)
   end
   
   # Methods for caching Harvest data locally
   # The read & write cache methods are probably generally useful
   def read_cache_(fname)
-    data = File.open("#{fname}.json", 'r') do |json|
+    data = File.open(fname, 'r') do |json|
       JSON.load(json)
     end
   end
   
   def write_cache_(fname, data)
-    File.open("#{fname}.json", 'w') do |json|
+    File.open(fname, 'w') do |json|
       json.puts(JSON.pretty_generate(data))
     end
   end
@@ -154,7 +172,8 @@ class ESUtils
     fname = "#{index}/#{type}"
     fname = "#{fname}-#{postfix}" if postfix
     puts "Reading #{type} records from cache file #{fname}.json" if @verbose
-    arr = self.read_cache_(fname)
+    self.log("Reading #{type} records from cache file #{fname}.json", __method__, __LINE__)
+    arr = self.read_cache_("#{fname}.json")
     data = arr
     if unwind
       # The problem with writing out data to a JSON file and then reading it back 
@@ -164,7 +183,6 @@ class ESUtils
       data = []
       arr.each do |element|
         data.push(element[type])
-        #data << element[type]
       end
     end
     data
@@ -174,27 +192,86 @@ class ESUtils
     fname = "#{index}/#{type}"
     fname = "#{fname}-#{postfix}" if postfix
     puts ".. and writing cache file #{fname}.json" if @verbose
-    self.write_cache_(fname, data)
+    self.log("Writing to file #{fname}", __method__, __FILE__)
+    self.write_cache_("#{fname}.json", data)
     # If we have just cached the data then make sure that we read it back from the file
     self.read_cache(index, type, true)
   end
   
   def read_time_cache(index, type, postfix=nil)
-    self.read_cache(index, type, true, postfix)
+    self.log("Reading from time cache", __method__, __LINE__)
+    data = self.read_cache(index, type, true, postfix)
+    self.log("Reading #{data.size} records from time cache", __method__, __LINE__)
+    data
   end
 
   def write_time_cache(index, type, data, postfix=nil)
     fname = "#{index}/#{type}"
     fname = "#{fname}-#{postfix}" if postfix
     puts "Writing cache file #{fname}.json" if @verbose
-    self.write_cache_(fname, data)
+    self.log("Writing to file #{fname}.json", __method__, __LINE__)
+    self.write_cache_("#{fname}.json", data)
     puts ".. and reading cache file #{fname}.json" if @verbose
+    self.log(".. and reading cache file #{fname}.json", __method__, __LINE__)
     self.read_time_cache(index, type, postfix)
+  end
+  
+  def get_invoice(index, id, hv)
+    fname = "#{index}/inv-#{id}.json"
+    creds = "#{hv['username']}:#{hv['password']}"
+    if !File.exists?(fname)
+      msg = "Need to fetch invoice=#{id}"
+      url = "https://#{hv['subdomain']}.harvestapp.com/invoices/#{id}"
+      cmd = "curl -u #{creds} -XGET -i '#{url}' -H 'Accept: application/json' -L 2> /dev/null | tail -r | head -n 1 > #{fname}"
+      %x{ #{cmd} }
+    else
+      msg = "Found invoice=#{id} in cache"
+    end
+    self.log("#{msg}", __method__, __LINE__)
+    inv = {}
+    File.open(fname, 'r') do |data|
+      inv = JSON.load(data)
+    end
+    inv
+  end
+  
+  def get_csv_line_items(invoice, unwind=true)
+    inv = invoice
+    inv = invoice['invoice'] if unwind
+    
+    cli = CSV.parse(inv['csv_line_items'])
+    cols = cli.shift
+    self.log("Found #{cli.size} line items on invoice", __method__, __LINE__)
+    csv_line_items = Array.new
+    cli.each do |line|
+      i = 0
+      c = {}
+      line.each do |col|
+        c[cols[i]] = col
+        i += 1
+      end
+      c = self.denormalise_doc(c)
+      csv_line_items.push(c)
+    end
+
+    #pp csv_line_items
+    csv_line_items
+  end
+
+  def merge_csv_into_invoice(index, id, hv)
+    self.log("Merge invoice csv_line_items, id=#{id}", __method__, __LINE__)
+    invoice = self.get_invoice(index, id, hv)
+    csv_line_items = self.get_csv_line_items(invoice) 
+    invoice['invoice']['csv_line_items'] = csv_line_items
+    self.log("Completed merge invoice csv_line_items", __method__, __LINE__)
+    invoice
   end
 
   # This method is probably Harvest specific
   def setup_id_index(index, type)
+    # The @<type>_id maps are helpful for de-normalising docs before indexing them
     puts "Setup #{type}_id index" if @verbose
+    self.log("Setup #{type}_id index", __method__, __LINE__)
     cmd = "self.read_cache('#{index}', '#{type}', true)"
     puts cmd if @debug
     arr = eval(cmd)
@@ -208,6 +285,7 @@ class ESUtils
 
   def setup_id_index2(index, type, year=nil, month=nil)
     puts "Setup #{type}_id2 index" if @verbose
+    self.log("Setup #{type}_id2 index", __method__, __LINE__)
     if !year.nil? and !month.nil?
       postfix = sprintf("%d-%02d", year, month)
       cmd = "self.read_time_cache(index, type, postfix)"
@@ -216,10 +294,12 @@ class ESUtils
     end
     puts cmd if @debug
     arr = eval(cmd)
+    # Want a map of objects indexed by their id
     idmap = {}
     arr.each do |element|
       idmap[element['id']] = element
     end
+    self.log("Completed", __method__, __LINE__)
     idmap
   end
 
@@ -227,6 +307,7 @@ class ESUtils
   def get_type_fields(type)
     map = @elastic.indices.get_mapping(index: @index, type: type)
     fields = map[index]['mappings'][type]['properties'].keys
+    #pp fields
     fields.delete(type)
     fields
   end
@@ -244,32 +325,51 @@ class ESUtils
   end
   
   def strip_body_fields(o, fields)
+    self.log("Stripping fields", __method__, __LINE__)
     body = o.clone
     body.keys.each do |key|
-      body.delete(key) if !fields.include?(key)
+      if !fields.include?(key)
+        #self.log("  Stripping field #{key}", __method__, __LINE__)
+        body.delete(key)
+      end
     end
     body.delete('id')
     pp body if @debug
+    self.log("Completed", __method__, __LINE__)
     body
   end
   
   def denormalise_doc(element)
     keys = element.keys
+    #pp keys
+    self.log("Denormalising doc", __method__, __LINE__)
     keys.each do |key|
       if key == 'client_id' or key == 'user_id' or key == 'project_id' or key == 'expense_category_id'
         ekey = eval("element['#{key}']") # e.g. ekey = element['user_id']
-        typid = {}
-        typid['id'] = ekey # e.g. element['user_id]
-        cmd = "typid['name'] = @#{key}[#{ekey}]" # @user_id[ekey]
-        puts cmd if @verbose
-        name = eval(cmd)
-        puts "#{key} = '#{ekey}'" if @verbose
-        puts "@#{key}['#{ekey}'] => '#{name}'" if @debug # e.g. "user_id['854934'] => 'Baykal, Ali'"
-        pp typid if @debug
-        element[key] = typid
+        self.log("  Denormalising #{key} = #{ekey}", __method__, __LINE__)
+        if !ekey.nil?
+          typid = {}
+          if key == 'project_id' and ekey == 'false'
+            self.log("    project_id = #{ekey}", __method__, __LINE__)
+            typid = {'id' => 0, 'name' => "Unknown"}
+          else
+            typid['id'] = ekey # e.g. element['user_id]
+            cmd = "typid['name'] = @#{key}[#{ekey}]" # @user_id[ekey]
+            puts cmd if @verbose
+            eval(cmd)
+            self.log("    #{cmd} => '#{typid['name']}'", __method__, __LINE__)
+            puts "#{key} = '#{ekey}'" if @verbose
+            puts "@#{key}['#{ekey}'] => '#{typid['name']}'" if @debug # e.g. "user_id['854934'] => 'Baykal, Ali'"
+          end
+          pp typid if @debug
+          element[key] = typid
+        else
+          self.log("  Unable to denormalise #{key}", __method__, __LINE__)
+        end
       end
       pp element if @debug
     end
+    self.log("Completed", __method__, __LINE__)
     element
   end
   
@@ -316,7 +416,7 @@ class ESUtils
     sday = mon.yday
     eday = mon.next_month.prev_day.yday
     puts "Array(#{sday}..#{eday})" if @debug
-    self.log("Range: (#{mon}) #{sday}-#{eday}", __method__)
+    self.log("Range: (#{mon}) #{sday}-#{eday}", __method__, __LINE__)
     Array(sday..eday)
   end
   
@@ -325,8 +425,12 @@ class ESUtils
     cmd = "@harvest.#{type}s.all"
     cmd = "@harvest.expense_categories.all" if type == 'expense_category'
     puts "Reading #{type} records from Harvest - #{cmd}" if @verbose
+    self.log("Reading #{type} records from Harvest - #{cmd}", __method__, __LINE__)
     data = eval(cmd)
+    self.log("Read #{data.size} records", __method__, __LINE__)
     self.write_cache(index, type, data)
+    @logfile.flush
+    data
   end
   
   # Harvest specific
@@ -335,25 +439,31 @@ class ESUtils
     data = []
 
     puts "\npull_#{type}s:" if @verbose
+    self.log("pull_type_for_month('#{index}', '#{type}', #{year}, #{month})", __method__, __LINE__)
     susers = self.users_by_date(index)
     days = self.get_days_for_month(year, month)
     
     days.each do |d|
       day = Date.ordinal(year, d)
       puts "  Getting #{type} data for #{day.year}/#{day.mon}/#{day.day}" if @verbose
+      self.log("  Getting #{type} data for #{day.year}/#{day.mon}/#{day.day}", __method__, __LINE__)
 
       # Iterate over [active] users
       susers.each do |u|
         valid_user = user_valid_for_date(u, day, year, month)
         if valid_user
+          self.log("    Get #{type}s for #{u['last_name']}", __method__, __LINE__)
           ut = @harvest.expenses.all(day, u['id']) if type == "expense"
           ut = @harvest.time.all(day, u['id']) if type == "time"
           if ut.size > 0
+            puts "---- #{u['email']} ----"
+            pp ut
             #puts "    Concat'ing data"
             data.concat(ut)
           else
             puts "      Empty data" if @debug
           end
+          @logfile.flush
         else
           break
         end
@@ -361,8 +471,10 @@ class ESUtils
     end
     
     puts "Found #{data.size} #{type} records" if @verbose
+    self.log("Found #{data.size} #{type} records", __method__, __LINE__)
     postfix = sprintf("%d-%02d", year, month)
     self.write_time_cache(index, type, data, postfix)
+    @logfile.flush
   end
   
   # Harvest specific
@@ -372,28 +484,32 @@ class ESUtils
     invoice = []
 
     puts "\npull_invoices: " if @verbose
-    self.log("index = '#{index}', type = '#{type}', year = #{year}, month = #{month}", __method__)
+    self.log("pull_type_for_month('#{index}', '#{type}', #{year}, #{month})", __method__, __LINE__)
     days = self.get_days_for_month(year, month)
-    
-    #start_date = Date.new(year, month, 1)
 
-    days.each do |d|
-      day = Date.ordinal(year, d)
-      options = {:timeframe => {:from => day.strftime("%Y%m%d"), :to => day.strftime("%Y%m%d")}}
-      puts "  Getting #{type} data for #{day.year}/#{day.mon}/#{day.day}" if @verbose
-      self.log("  Getting #{type} data for #{day.year}/#{day.mon}/#{day.day}", __method__)
-      ui = @harvest.invoices.all(options)
-      if ui.size > 0
-        #puts "    Concat'ing data"
-        invoice.concat(ui)
-      else
-        puts "      Empty data" if @debug
-      end
+    from = Date.ordinal(year, days[0])
+    to = Date.ordinal(year, days[-1])
+    options = {:timeframe => {:from => from.strftime("%Y%m%d"), :to => to.strftime("%Y%m%d")}}
+    self.log("  Getting #{type} data for #{from.year}/#{from.mon}/#{from.day}-#{to.year}/#{to.mon}/#{to.day}", __method__, __LINE__)
+    ui = @harvest.invoices.all(options)
+    if ui.size > 0
+      #puts "    Concat'ing data"
+      invoice.concat(ui)
+    else
+      puts "      Empty data" if @debug
     end
         
     puts "Found #{invoice.size} #{type} records" if @verbose
+    self.log("Found #{invoice.size} #{type} records", __method__, __LINE__)
     postfix = sprintf("%d-%02d", year, month)
     self.write_time_cache(index, type, invoice, postfix)    
+    @logfile.flush
+    invoice.each do |inv|
+      self.get_invoice(index, inv['id'], @hv)
+      #self.merge_csv_into_invoice(index, inv['id'], @hv)
+    end
+    self.log("Completed", __method__, __LINE__)
+    @logfile.flush
   end
   
 =begin
@@ -455,7 +571,7 @@ class ESUtils
   end
   
   def create_es_index(index, force=false)
-    idx_def = self.read_cache_("#{index}/#{index}")
+    idx_def = self.read_cache_("#{index}/#{index}.json")
     if @elastic.indices.exists?(index: index)
       if force
         self.delete_index()
@@ -474,21 +590,20 @@ class ESUtils
   end
   
   def index_type(index, type, docs=nil)
-    initialize_reverse_indexes(index)
-
     fields = self.get_type_fields(type)
     pp fields if @debug
 
+    self.log("Need to get full #{type} records from cache", __method__, __LINE__)
     docs = self.read_cache(index, type, true) if docs.nil?
     docs.each do |o|
-      #pp o[0]
+      #pp o
+      _id = o[0]
       if type == 'user'
-        puts "#{o[1]['id']}: #{o[1]['last_name']}"
-      else
-        puts "#{o[1]['id']}: #{o[1]['name']}"
+        puts ">>: #{o[1]['id']}: #{o[1]['last_name']}, #{o[1]['first_name']}"
+      elsif o[1].keys.include?('name')
+        puts ">>: #{o[1]['id']}: #{o[1]['name']}"
       end
 
-      _id = o[0]
       body = self.strip_body_fields(o[1], fields)
       body = self.denormalise_doc(body)
 
@@ -508,6 +623,7 @@ class ESUtils
       end
   
       if action != 'skip'
+        self.log("  Need to #{action} #{type} doc in ES, id=#{_id}", __method__, __LINE__)
         rc = @elastic.index(index: index, type: type, id: _id, body: body, op_type: action)
       end
 
@@ -523,14 +639,17 @@ class ESUtils
         puts msg if log
         pp rc if log
       end
+      @logfile.flush
     end
 
   end
   
   def index_outdated(index, type)
+    self.initialize_reverse_indexes(index) if @user_id.empty?
     # Need to query ES for all the items that we are being asked to index
+    self.log("Updating ES #{type} records", __method__, __LINE__)
     search_results = self.get_type_updated_at(index, type)
-  
+    
     hashed_results = self.setup_id_index2(index, type)
 
     # Then we need to compare the updated_at fields with the corresponding fields from the JSON
@@ -539,19 +658,24 @@ class ESUtils
       id = res.keys.first.to_i
       #pp tcache[id]
       if res.values.first >= hashed_results[id]['updated_at']
-        #puts "Needs updating" if @verbose
-        #else
         puts "Cached version (#{id}) isn't newer" if @vdebug
         hashed_results.delete(id)
+      else
+        self.log("  #{type}['#{id}'] is out-of-date in ES")
       end
     end
     # Whatever is left in hashed_results is what needs to be sent to elasticsearch
     puts "Got #{hashed_results.keys.size} docs to update"
-    index_type(index, type, hashed_results)
+    self.log("  Got #{hashed_results.keys.size} docs to update", __method__, __LINE__)
+    index_type(index, type, hashed_results) if hashed_results.keys.size > 0
+    self.log("Completed", __method__, __LINE__)
   end
   
   def index_outdated_for_month(index, type, year, month)
+    self.initialize_reverse_indexes(index) if @user_id.empty?
+    pp @project_id
     # Need to query ES for all the items that we are being asked to index
+    self.log("Updating ES #{type} records", __method__, __LINE__)
     search_results = self.get_type_updated_at(index, type, year.to_i, month.to_i)
     
     #puts "------------------------"
@@ -565,16 +689,64 @@ class ESUtils
       id = res.keys.first.to_i
       #pp tcache[id]
       if res.values.first >= hashed_results[id]['updated_at']
-        #puts "Needs updating" if @verbose
-        #else
         puts "Cached version (#{id}) isn't newer" if @vdebug
         hashed_results.delete(id)
+      else
+        self.log("  #{type}['#{id}'] is out-of-date in ES")
       end
     end
     # Whatever is left in hashed_results is what needs to be sent to elasticsearch
     puts "Got #{hashed_results.keys.size} docs to update"
-    #pp hashed_results
-    index_type(index, type, hashed_results)
+    self.log("  Got #{hashed_results.keys.size} docs to update", __method__, __LINE__)
+    index_type(index, type, hashed_results) if hashed_results.keys.size > 0
+    self.log("Completed", __method__, __LINE__)
+  end
+  
+  def index_invoices(index, type)
+    self.initialize_reverse_indexes(index) if @user_id.empty?
+    fields = self.get_type_fields(type)
+    pp fields if @debug
+
+    self.log("Need to get full #{type} records from cache", __method__, __LINE__)
+    
+    Dir.new(index).each do |fname|
+      iname = fname[/^inv-[0-9]{5,}.json$/]
+      if !iname.nil?
+        inv = {}
+        self.log("  Reading invoice from file #{index}/#{iname}", __method__, __LINE__)
+        File.open("#{index}/#{iname}", 'r') do |data|
+          inv = JSON.load(data)
+        end
+        _id = inv[type]['id']
+        self.log("  Invoice id=#{_id}", __method__, __LINE__)
+        inv[type] = self.strip_body_fields(inv[type], fields)
+        inv[type]['csv_line_items'] = self.get_csv_line_items(inv)
+        body = self.denormalise_doc(inv[type])
+        
+        action = 'skip'
+        doc = {}
+        rc = {}
+  
+        # See if this doc alreasy exists
+        if @elastic.exists(index: index, type: type, id: _id) 
+          #puts "Doc exists"
+          # Get the doc from ES
+          doc = @elastic.get(index: index, type: type, id: _id)
+          action = 'index' if self.is_harvest_doc_newer?(doc, 'updated_at', body)
+        else
+          #puts "Doc doesn't exist"
+          action = 'create'
+        end
+  
+        if action != 'skip'
+          self.log("  Need to #{action} #{type} doc in ES, id=#{_id}", __method__, __LINE__)
+          rc = @elastic.index(index: index, type: type, id: _id, body: body, op_type: action)
+        end
+
+        
+      end
+      @logfile.flush
+    end
   end
   
   def get_type_updated_at(index, type, year=nil, month=nil)
@@ -599,19 +771,25 @@ class ESUtils
     
     size = 100
     puts "Get hits from 0" if @debug
+    self.log("Search ES /#{index}/#{type} with query: #{qq}", __method__, __LINE__)
     res = @elastic.search(index: index, body: qq, type: type, fields: flds, size: size)
     # This first result tells us how many hits there were altogether
     hcount = res['hits']['total']
+    self.log("  Got #{hcount} #{type} docs", __method__, __LINE__)
 
     # Somewhere to put the results
     result = []
+    self.log("  Build map of 'updated_at' time for first #{size} docs", __method__, __LINE__)
     res['hits']['hits'].each do |hit|
       result.push({hit['_id'] => hit['fields']['updated_at'].first})
     end
+    
+    hcount -= size
     from = size
     until hcount < 0 do
-      sleep(1)
+      #sleep(1)
       puts "Get hits from #{from}" if @debug
+      self.log("  Get next #{size} docs of #{hcount}", __method__, __LINE__)
       res = @elastic.search(index: index, body: qq, type: type, fields: flds, size: size, from: from)
       res['hits']['hits'].each do |hit|
         result.push({hit['_id'] => hit['fields']['updated_at'].first})
@@ -620,6 +798,7 @@ class ESUtils
       from += size
     end
     pp result if @debug
+    @logfile.flush
     result
   end
   
@@ -711,6 +890,7 @@ def get_harvest_handle(opt)
   harvest = Harvest.client(subdomain: hv['subdomain'], 
                             username: hv['username'], 
                             password: hv['password'])
+  return harvest, hv
 end
 
 def get_esu_handle(opt)
@@ -739,11 +919,8 @@ if __FILE__ == $0
     puts
     exit(1)
   elsif opt.export
-    hv = YAML.load_file(opt.harvest)
-    pp hv if opt.debug
-    harvest = Harvest.client(subdomain: hv['subdomain'], 
-                              username: hv['username'], password: hv['password'])
-    esu.set_harvest(harvest)
+    harvest = get_harvest_handle(opt)
+    esu.set_harvest(harvest[0], harvest[1])
 
     puts "Export data from Harvest"
     # Generally we only want to export one type at a time

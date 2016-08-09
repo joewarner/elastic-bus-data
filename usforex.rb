@@ -28,11 +28,15 @@ class USFOptions
   def self.parse(args)
     opt = OpenStruct.new
     opt.all = false
+    opt.action = 'create'
     opt.from = nil
     opt.to = nil
     opt_parser = OptionParser.new do |o|
       o.on("-a", "--all") do |arg|
         opt.all = true
+      end
+      o.on("--action ACTION") do |arg|
+        opt.action = arg
       end
       o.on("-f", "--from FROM") do |arg|
         opt.from = arg
@@ -48,17 +52,18 @@ end
 
 opt = USFOptions.parse(ARGV)
 from = opt.from
+action = opt.action
 to = opt.to
-out = File.open("#{from}-#{to}.json", "w")
+out = File.open("#{from}-#{to}.bulk", "w")
 
 File.open("#{from}-#{to}.csv").each_line do |line|
   date = line[/^([0-9\-\/]+)/,1]
   exch = line[/,([0-9\.]+)/,1]
   d = date.split('/')
   dd = Date.new(d[2].to_i, d[1].to_i, d[0].to_i)
-  if opt.all or dd.to_s >= "2012-01-01"
+  if opt.all or dd.to_s >= "2016-01-01"
     id = dd.strftime("%Y%m")
-    out.print "{ \"index\" : { \"_id\" : \"#{id}_#{from}-#{to}\" } }\n"
+    out.print "{ \"#{action}\" : { \"_id\" : \"#{id}_#{from}-#{to}\" } }\n"
     out.print "{ \"month\" : \"#{dd}\", \"rate\" : \"#{exch}\", \"from\" : \"#{from}\", \"to\" : \"#{to}\" }\n"
   end
 end
