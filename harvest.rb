@@ -299,7 +299,22 @@ class ESUtils
     arr.each do |element|
       idmap[element['id']] = element
     end
+    idmap = augment_clients(index, type, idmap) if type.eql?('client')
     self.log("Completed", __method__, __LINE__)
+    idmap
+  end
+  
+  def augment_clients(index, type, idmap)
+    # A bit of a hack for now
+    self.log("Adding location data", __method__, __LINE__)
+    loc = self.read_cache_("#{index}/#{type}-location.json")
+    loc.each do |locn|
+      id = locn['client']['id']
+      #pp id
+      idmap[id]['location'] = locn['client']['location']
+      #pp idmap[id]
+    end
+    #pp loc
     idmap
   end
 
