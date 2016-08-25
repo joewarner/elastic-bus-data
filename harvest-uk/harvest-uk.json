@@ -82,6 +82,8 @@
             "amount" :    { "type" : "float" },
             "taxed" :     { "type" : "boolean" },
             "taxed2" :    { "type" : "boolean" },
+            "gbp_amount" :    { "type" : "float" },
+            "usd_amount" :    { "type" : "float" },
             "project_id" : { 
               "type" : "object",
               "properties" : {

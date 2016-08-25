@@ -43,8 +43,9 @@ end
 # There are the following scenarios that we want to be able to support
 #
 # - Complete refresh of the [Harvest] cache (--cache-reload)
-# - Update all of the [Harvest] cache (--cache-update-all)
+# - Update all of the [Harvest] cache (--cache-update-all), last N months
 # - Update the specified type in the cache (--cache_update -t <type> [--year --month-num])
+#
 # - Completely reconstruct the elasticsearch index (--rebuild-index)
 # - Update the elasticsearch index with recent changes (--update-es-all)
 # - Update the specified type in the elasticsearch index with recent changes (--update-es -t <type> [--year --month-num])
@@ -54,46 +55,69 @@ def cache_update(opt)
   harvest = get_harvest_handle(opt)
   esu = get_esu_handle(opt)
   esu.set_harvest(harvest[0], harvest[1])
-  year = opt.year ? opt.year.to_i : 2015
-  month = opt.month ? opt.month.to_i : 1
   puts "cache_update('#{opt.type}')"
-  puts "pull_#{opt.type}s('#{opt.index}', #{year}, #{month})"
-  esu.instance_eval("pull_#{opt.type}s('#{opt.index}', year, month)")
+  if esu.stype?(opt.type)
+    puts "  pull_#{opt.type}s('#{opt.index}')"
+    # Year and Month not 'required' for stypes, so put dummy values in there
+    esu.instance_eval("pull_#{opt.type}s('#{opt.index}', 0, 0)") if !opt.no_action
+  elsif esu.ctype?(opt.type)
+    syear = 2014
+    smonth = 10
+    now = Date.today
+    if opt.year and opt.month
+      year = opt.year ? opt.year.to_i : syear
+      month = opt.month ? opt.month.to_i : smonth
+      puts "  pull_#{opt.type}s('#{opt.index}', #{year}, #{month})"
+      esu.instance_eval("pull_#{opt.type}s('#{opt.index}', #{year}, #{month})") if !opt.no_action
+    else
+      start = Date.new(syear, smonth, 1)
+      today = Date.today
+      months = setup_months(start, today)
+      months.each do |month|
+        puts "  pull_#{opt.type}s('#{opt.index}', #{month[:year]}, #{month[:month]})"
+        esu.instance_eval("pull_#{opt.type}s('#{opt.index}', #{month[:year]}, #{month[:month]})") if !opt.no_action
+      end
+    end
+  end
 end
 
-def cache_update_all(opt)
+def cache_update_all(opt, window)
+  stypes = ESUtils.class_eval("@@stypes")
+  ctypes = ESUtils.class_eval("@@ctypes")
   # Haven't seen a good way to implement 'update_all' as yet
-  cache_reload(opt)
+  # Loop over stypes and just do a cache_update on all of them
+  stypes.each do |type|
+    opt.send("type=", type)
+    puts "cache_update_all('#{opt.type}')"
+    cache_update(opt)
+    sleep(1) if !opt.no_action
+  end
+  # Need Date.today and count back window months
+  months = setup_months(Date.today.prev_month(window), Date.today)
+  # Then for each of those months do a cache_update for the specified month on all ctypes
+  months[-window..-1].each do |month|
+    opt.send("year=", month[:year])
+    opt.send("month=", month[:month])
+    ctypes.each do |type|
+      opt.send("type=", type)
+      puts "cache_update_all('#{opt.type}', #{month[:year]}, #{month[:month]})"
+      cache_update(opt) 
+      sleep(1) if !opt.no_action
+    end
+  end
 end
 
 def cache_reload(opt)
   stypes = ESUtils.class_eval("@@stypes")
   ctypes = ESUtils.class_eval("@@ctypes")
-  # Iterate over all types - can pass via opt.type
-  # stypes are not date sensitive
-  opt.send("year=", 2015) # Just to say that we have sent something
-  opt.send("month=", 1)   # Just to say that we have sent something
-  stypes.each do |type|
+  types = stypes.concat(ctypes)
+  
+  # The brutal approach
+  types.each do |type|
     opt.send("type=", type)
-    puts "cache_update('#{opt.type}', #{opt.year}, #{opt.month})"
+    puts "cache_reload('#{opt.type}')"
     cache_update(opt)
-    sleep(1)
-  end
-  # Want an array of all years and months
-  start = Date.new(2014, 10, 1)
-  today = Date.today
-  months = setup_months(start, today)
-  #ctypes.each do |type|
-  ctypes.each do |type|
-    opt.send("type=", type)
-    months.each do |month|
-      opt.send("year=", month[:year])
-      opt.send("month=", month[:month])
-      puts "cache_update('#{opt.type}', #{opt.year}, #{opt.month})"
-      cache_update(opt)
-      sleep(1)
-    end
-    sleep(1) if type != ctypes.last
+    sleep(1) if !opt.no_action
   end
 end
 
@@ -150,10 +174,11 @@ if opt.cache_update
   cache_update(opt)
 elsif opt.cache_update_all
   # In reality we only reload the last N months
-  cache_update_all(opt)
+  cache_update_all(opt, 4)
 elsif opt.cache_reload
   # Everything
   cache_reload(opt)
+  
 elsif opt.rebuild_index
   # Rebuid in the index on its own is sismple
   rebuild_index(opt)

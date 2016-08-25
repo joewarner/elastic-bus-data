@@ -18,6 +18,7 @@ class ESOptions
   def self.parse(args)
     opt = OpenStruct.new
     opt.debug = false
+    opt.no_action = false
     opt.verbose = false
     opt.full = false
     opt.type = nil
@@ -42,6 +43,9 @@ class ESOptions
       # Generic options
       o.on("-d", "--debug") do |arg|
         opt.debug = true
+      end
+      o.on("-n", "--no-action") do |arg|
+        opt.no_action = true
       end
       o.on("-v", "--verbose") do |arg|
         opt.verbose = true
@@ -79,12 +83,15 @@ class ESOptions
       end
 
       o.on("--cache-update") do |arg|
+        opt.export = true
         opt.cache_update = true
       end
       o.on("--cache-update-all") do |arg|
+        opt.export = true
         opt.cache_update_all = true
       end
       o.on("--cache-reload") do |arg|
+        opt.export = true
         opt.cache_reload = true
       end
       o.on("--update-es") do |arg|
@@ -99,33 +106,38 @@ class ESOptions
     opt.verbose = true if opt.debug
     opt
   end
+  
+  def self.show_options(opt)
+    puts
+    puts "      --verbose is '#{opt.verbose}'"
+    puts "        --debug is '#{opt.debug}'"
+    puts "    --no-action is '#{opt.no_action}'"
+    puts
+    if opt.export
+      puts "      --harvest is '#{opt.harvest}'"
+      puts "       --export is '#{opt.export}'"
+      puts "           --type is '#{opt.type}'" if opt.type
+      puts "             --year is '#{opt.year}'" if opt.type and opt.year
+      puts "              --month is '#{opt.month}'" if opt.type and opt.month
+      puts 
+    end
+    if opt.rebuild_index #or opt.index
+      puts "    --es-config is '#{opt.es_config}'"
+      puts "--rebuild-index is '#{opt.rebuild_index}'"
+      puts "        --index is '#{opt.index}'"
+      puts "           --type is '#{opt.type}'" if opt.type
+      puts "             --year is '#{opt.year}'" if opt.type and opt.year
+      puts "              --month is '#{opt.month}'" if opt.type and opt.month
+      puts
+    end
+    if opt.export and (opt.rebuild ) #or opt.index)
+      puts "Your program should likely be built so that it rejects this combination of options"
+      puts 
+    end
+  end
 end
 
 if __FILE__ == $0
   opt = ESOptions.parse(ARGV)
-  puts
-  puts "      --verbose is '#{opt.verbose}'"
-  puts "        --debug is '#{opt.debug}'"
-  puts
-  if opt.export
-    puts "      --harvest is '#{opt.harvest}'"
-    puts "       --export is '#{opt.export}'"
-    puts "           --type is '#{opt.type}'" if opt.type
-    puts "             --year is '#{opt.year}'" if opt.type and opt.year
-    puts "              --month is '#{opt.month}'" if opt.type and opt.month
-    puts 
-  end
-  if opt.rebuild_index or opt.index
-    puts "    --es-config is '#{opt.es_config}'"
-    puts "--rebuild-index is '#{opt.rebuild_index}'"
-    puts "        --index is '#{opt.index}'"
-    puts "           --type is '#{opt.type}'" if opt.type
-    puts "             --year is '#{opt.year}'" if opt.type and opt.year
-    puts "              --month is '#{opt.month}'" if opt.type and opt.month
-    puts
-  end
-  if opt.export and (opt.rebuild or opt.index)
-    puts "Your program should likely be built so that it rejects this combination or options"
-    puts 
-  end
+  ESOptions.show_options(opt)
 end

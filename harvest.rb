@@ -21,6 +21,14 @@ class ESUtils
   #class Harvest
   #end
   
+  def stype?(type)
+    @@stypes.include?(type)
+  end
+  
+  def ctype?(type)
+    @@ctypes.include?(type)
+  end
+  
   def log(msg, method=nil, lineno=nil)
     now = DateTime.now.strftime("%Y-%m-%d %H:%M:%S.%L")    
     logmsg = ""
@@ -131,7 +139,7 @@ class ESUtils
       puts "Make call to index_outdated('#{index}', '#{type}', '#{year}', '#{month}')" if @verbose
       if type == 'invoice'
         self.log("  Handing off to index_invoices('#{index}', '#{type}')", __method__, __LINE__)
-        self.index_invoices(index, type)
+        self.index_invoices(index, type, year, month)
       else
         self.log("  Handing off to index_outdated_for_month('#{index}', '#{type}', #{year}, #{month})", __method__, __LINE__)
         self.index_outdated_for_month(index, type, year, month)
@@ -222,7 +230,7 @@ class ESUtils
     if !File.exists?(fname)
       msg = "Need to fetch invoice=#{id}"
       url = "https://#{hv['subdomain']}.harvestapp.com/invoices/#{id}"
-      cmd = "curl -u #{creds} -XGET -i '#{url}' -H 'Accept: application/json' -L 2> /dev/null | tail -r | head -n 1 > #{fname}"
+      cmd = "curl -u #{creds} -XGET '#{url}' -H 'Accept: application/json' -L 2> /dev/null > #{fname}"
       %x{ #{cmd} }
     else
       msg = "Found invoice=#{id} in cache"
@@ -516,13 +524,14 @@ class ESUtils
         
     puts "Found #{invoice.size} #{type} records" if @verbose
     self.log("Found #{invoice.size} #{type} records", __method__, __LINE__)
+    invoice.each_index do |i|
+      invoice[i] = self.merge_csv_into_invoice(index, invoice[i]['id'], @hv)
+    end
+
     postfix = sprintf("%d-%02d", year, month)
     self.write_time_cache(index, type, invoice, postfix)    
     @logfile.flush
-    invoice.each do |inv|
-      self.get_invoice(index, inv['id'], @hv)
-      #self.merge_csv_into_invoice(index, inv['id'], @hv)
-    end
+
     self.log("Completed", __method__, __LINE__)
     @logfile.flush
   end
@@ -717,49 +726,87 @@ class ESUtils
     self.log("Completed", __method__, __LINE__)
   end
   
-  def index_invoices(index, type)
+  def get_month_forex(year, month)
+    # Need to get relevant usforex data
+    mth = Date.new(year, month, 1).strftime('%Y-%m-%d')
+    qq = { "filter" => { "match" => { "month" => "#{mth}" }}}
+    self.log("Getting usforex data for #{mth}", __method__, __LINE__)
+    #pp qq
+    res = @elastic.search(index: 'usforex', type: 'currency_rate', body: qq)
+    #pp res['hits']['hits']
+    forex = []
+    res['hits']['hits'].each do |h|
+      forex.push(h['_source'])
+    end
+    #pp forex
+    forex
+  end
+  
+  def currency_conv(forex, from, amt)
+    conv = {}
+    conv['gbp_amount'] = amt if from.eql?('GBP')
+    forex.each do |rate|
+      if rate['from'].eql?(from) and rate['to'].eql?('GBP')
+        conv['gbp_amount'] = amt * rate['rate'].to_f 
+      elsif rate['from'].eql?(from) and rate['to'].eql?('USD')
+        conv['usd_amount'] = amt * rate['rate'].to_f
+      end
+    end
+    conv
+  end
+  
+  def index_invoices(index, type, year, month)
     self.initialize_reverse_indexes(index) if @user_id.empty?
     fields = self.get_type_fields(type)
     pp fields if @debug
 
-    self.log("Need to get full #{type} records from cache", __method__, __LINE__)
-    
-    Dir.new(index).each do |fname|
-      iname = fname[/^inv-[0-9]{5,}.json$/]
-      if !iname.nil?
-        inv = {}
-        self.log("  Reading invoice from file #{index}/#{iname}", __method__, __LINE__)
-        File.open("#{index}/#{iname}", 'r') do |data|
-          inv = JSON.load(data)
-        end
-        _id = inv[type]['id']
-        self.log("  Invoice id=#{_id}", __method__, __LINE__)
-        inv[type] = self.strip_body_fields(inv[type], fields)
-        inv[type]['csv_line_items'] = self.get_csv_line_items(inv)
-        body = self.denormalise_doc(inv[type])
-        
-        action = 'skip'
-        doc = {}
-        rc = {}
-  
-        # See if this doc alreasy exists
-        if @elastic.exists(index: index, type: type, id: _id) 
-          #puts "Doc exists"
-          # Get the doc from ES
-          doc = @elastic.get(index: index, type: type, id: _id)
-          action = 'index' if self.is_harvest_doc_newer?(doc, 'updated_at', body)
-        else
-          #puts "Doc doesn't exist"
-          action = 'create'
-        end
-  
-        if action != 'skip'
-          self.log("  Need to #{action} #{type} doc in ES, id=#{_id}", __method__, __LINE__)
-          rc = @elastic.index(index: index, type: type, id: _id, body: body, op_type: action)
-        end
+    # Need to get relevant usforex data
+    forex = self.get_month_forex(year, month)
 
-        
+    self.log("Need to get full #{type} records from cache", __method__, __LINE__)
+    mth = Date.new(year, month, 1).strftime('%Y-%m')
+    iname = "invoice-#{mth}.json"
+    self.log("  Reading invoices from file #{index}/#{iname}", __method__, __LINE__)
+
+    invoices = self.read_time_cache(index, type, "#{mth}")
+    invoices.each_index do |i|
+      inv = invoices[i]
+      _id = inv['id']
+      self.log("  Invoice id=#{_id}", __method__, __LINE__)
+      inv = self.strip_body_fields(inv, fields)
+      currency = 'GBP' if inv['currency'].include?('GBP')
+      currency = 'EUR' if inv['currency'].include?('EUR')
+      currency = 'DKK' if inv['currency'].include?('DKK')
+      inv['csv_line_items'].each do |item|
+        amt = item['amount'].to_f
+        conv = self.currency_conv(forex, currency, amt)
+        item['gbp_amount'] = conv['gbp_amount']
+        item['usd_amount'] = conv['usd_amount']
+        self.log("    Converted #{currency} as required", __method__, __LINE__)
+        self.log("      amount=#{amt}, gbp_amount=#{item['gbp_amount']}, usd_amount=#{item['usd_amount']}", __method__, __LINE__)
       end
+      body = self.denormalise_doc(inv)
+    
+      action = 'skip'
+      doc = {}
+      rc = {}
+
+      # See if this doc alreasy exists
+      if @elastic.exists(index: index, type: type, id: _id) 
+        #puts "Doc exists"
+        # Get the doc from ES
+        doc = @elastic.get(index: index, type: type, id: _id)
+        action = 'index' if self.is_harvest_doc_newer?(doc, 'updated_at', body)
+      else
+        #puts "Doc doesn't exist"
+        action = 'create'
+      end
+
+      if action != 'skip'
+        self.log("  Need to #{action} #{type} doc in ES, id=#{_id}", __method__, __LINE__)
+        rc = @elastic.index(index: index, type: type, id: _id, body: body, op_type: action)
+      end
+      
       @logfile.flush
     end
   end
