@@ -48,7 +48,8 @@ end
 #
 # - Completely reconstruct the elasticsearch index (--rebuild-index)
 # - Update the elasticsearch index with recent changes (--update-es-all)
-# - Update the specified type in the elasticsearch index with recent changes (--update-es -t <type> [--year --month-num])
+# - Update the specified type in the elasticsearch index with recent,
+#     or specific, changes (--update-es -t <type> [--year --month-num])
 #
 
 def cache_update(opt)
@@ -61,8 +62,10 @@ def cache_update(opt)
     # Year and Month not 'required' for stypes, so put dummy values in there
     esu.instance_eval("pull_#{opt.type}s('#{opt.index}', 0, 0)") if !opt.no_action
   elsif esu.ctype?(opt.type)
-    syear = 2014
-    smonth = 10
+    if opt.index.eql?('harvest-uk')
+      syear = 2014
+      smonth = 10
+    end
     now = Date.today
     if opt.year and opt.month
       year = opt.year ? opt.year.to_i : syear
@@ -81,10 +84,9 @@ def cache_update(opt)
   end
 end
 
-def cache_update_all(opt, window)
+def cache_update_all(opt, window=0)
   stypes = ESUtils.class_eval("@@stypes")
   ctypes = ESUtils.class_eval("@@ctypes")
-  # Haven't seen a good way to implement 'update_all' as yet
   # Loop over stypes and just do a cache_update on all of them
   stypes.each do |type|
     opt.send("type=", type)
@@ -92,10 +94,18 @@ def cache_update_all(opt, window)
     cache_update(opt)
     sleep(1) if !opt.no_action
   end
-  # Need Date.today and count back window months
-  months = setup_months(Date.today.prev_month(window), Date.today)
+  if window == 0
+    if opt.index.eql?('harvest-uk')
+      syear = 2014
+      smonth = 10
+    end
+    months = setup_months(Date.new(syear, smonth, 1), Date.today)
+  else
+    # Need Date.today and count back window months
+    months = setup_months(Date.today.prev_month(window), Date.today)[-window..-1]
+  end
   # Then for each of those months do a cache_update for the specified month on all ctypes
-  months[-window..-1].each do |month|
+  months.each do |month|
     opt.send("year=", month[:year])
     opt.send("month=", month[:month])
     ctypes.each do |type|
@@ -110,7 +120,7 @@ end
 def cache_reload(opt)
   stypes = ESUtils.class_eval("@@stypes")
   ctypes = ESUtils.class_eval("@@ctypes")
-  types = stypes.concat(ctypes)
+  types = [].concat(stypes).concat(ctypes)
   
   # The brutal approach
   types.each do |type|
@@ -121,50 +131,71 @@ def cache_reload(opt)
   end
 end
 
-def update_es(opt)
-  stypes = ESUtils.class_eval("@@stypes")
-  ctypes = ESUtils.class_eval("@@ctypes")
+def update_es(opt, window=0)
   esu = get_esu_handle(opt)
   init_elasticsearch(opt, esu)
-  year = opt.year ? opt.year.to_i : 2015
-  month = opt.month ? opt.month.to_i : 1
-  # Last 3 months
   puts "update_es('#{opt.type}')"
-  puts "index_outdated_#{opt.type}s('#{opt.index}', #{year}, #{month})"
-  esu.instance_eval("index_outdated_#{opt.type}s('#{opt.index}', year, month)")
-=begin
-  if stypes.include?(opt.type)
-    puts "update_es('#{opt.type}')"
-    esu.instance_eval("index_outdated_#{opt.type}s('#{opt.index}')")
-  elsif ctypes.include?(opt.type)
-    # Want an array of all years and months
-    start = Date.new(2014, 10, 1)
-    today = Date.today
-    months = setup_months(start, today)
-    months = setup_months(start, today)[-3..-1] if opt.full == false
-    months.each do |month|
-      puts "update_es('#{opt.type}', '#{month[:year]}', '#{month[:month]}')"
-      esu.instance_eval("index_outdated_#{opt.type}s('#{opt.index}', '#{opt.year}', '#{opt.month}')")
-      sleep(60) if month != months.last
+  if esu.stype?(opt.type)
+    puts "  index_outdated_#{opt.type}s('#{opt.index}')"
+    esu.instance_eval("index_outdated_#{opt.type}s('#{opt.index}', 0, 0)") if !opt.no_action
+  elsif esu.ctype?(opt.type)
+    if opt.year and opt.month
+      puts "  index_outdated_#{opt.type}s('#{opt.index}', #{opt.year}, #{opt.month})"
+      esu.instance_eval("index_outdated_#{opt.type}s('#{opt.index}', #{opt.year}, #{opt.month})") if !opt.no_action
+    else 
+      if opt.full
+        # Need to insert ALL data
+        if opt.index.eql?('harvest-uk')
+          syear = 2014
+          smonth = 10
+        end
+        months = setup_months(Date.new(syear, smonth, 1), Date.today)
+      else
+        # Last window months
+        # Need Date.today and count back window months
+        months = setup_months(Date.today.prev_month(window), Date.today)[-window..-1]
+      end
+      months.each do |month|
+        opt.send("year=", month[:year])
+        opt.send("month=", month[:month])
+        puts "  index_outdated_#{opt.type}s('#{opt.index}', #{month[:year]}, #{month[:month]})"
+        esu.instance_eval("index_outdated_#{opt.type}s('#{opt.index}', #{month[:year]}, #{month[:month]})") if !opt.no_action
+        sleep(1) if !opt.no_action
+      end
     end
+    opt.send("year=", nil)
+    opt.send("month=", nil)
   end
-=end
 end
 
-def update_es_all(opt)
+def update_es_all(opt, window=0)
   stypes = ESUtils.class_eval("@@stypes")
   ctypes = ESUtils.class_eval("@@ctypes")
   # Everything
   [].concat(stypes).concat(ctypes).each do |type|
     opt.send("type=", type)
-    update_es(opt)
+    update_es(opt, window)
+    opt.send("year=", nil)
+    opt.send("month=", nil)
   end
 end
 
 def rebuild_index(opt)
   esu = get_esu_handle(opt)
   init_elasticsearch(opt, esu)
-  esu.create_es_index(opt.index, true)
+  esu.create_es_index(opt.index, true) if !opt.no_action
+  stypes = ESUtils.class_eval("@@stypes")
+  ctypes = ESUtils.class_eval("@@ctypes")
+  # Everything
+  stypes.each do |type|
+    opt.send("type=", type)
+    update_es(opt)
+  end
+  ctypes.each do |type|
+    opt.send("type=", type)
+    opt.send("full=", true)
+    update_es(opt)
+  end
 end
   
 opt = ESOptions.parse(ARGV)
@@ -182,9 +213,8 @@ elsif opt.cache_reload
 elsif opt.rebuild_index
   # Rebuid in the index on its own is sismple
   rebuild_index(opt)
-  update_es_all(opt) if opt.full == true
 elsif opt.update_es
-  update_es(opt)
+  update_es(opt, 4)
 elsif opt.update_es_all
-  update_es_all(opt)
+  update_es_all(opt, 4)
 end
