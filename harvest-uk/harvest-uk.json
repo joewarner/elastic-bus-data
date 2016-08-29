@@ -15,16 +15,10 @@
         "currency" :      { "type" : "string" },
         "updated_at" :    { "type" : "date" },
         "created_at" :    { "type" : "date" },
-        "currency_symbol" : { "type" : "string" },
+        "currency_symbol" : { "type" : "string", "index" : "not_analyzed" },
         "details" :       { "type" : "string" },
-        "address" :       { "type" : "string" },
-        "location": {
-            "type": "object",
-            "properties": {
-                "lat":    { "type" : "long" },
-                "lon":    { "type" : "long" }
-            }
-        }
+        "address" :       { "type" : "string", "index" : "not_analyzed" },
+        "location":       { "type" : "geo_point" }
       }
     },
     "expense" : {
@@ -73,7 +67,7 @@
         "number" :        { "type" : "string" },
         "amount" :        { "type" : "float" },
         "csv_line_items" : {
-          "type" : "object",
+          "type" : "nested",
           "properties" : {
             "kind" :      { "type" : "string" },
             "description" : { "type" : "string" },
