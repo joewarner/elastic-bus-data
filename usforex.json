@@ -4,7 +4,10 @@
     "currency_rate" : {
       "properties" : {
         "month" :     { "type" : "date" },
-        "rate" :      { "type" : "float" },
+        "rate" :      { 
+          "type" : "float",
+          "index" : "not_analyzed" 
+        },
         "from" :      { "type" : "string" },
         "to" :        { "type" : "string" }
       }
