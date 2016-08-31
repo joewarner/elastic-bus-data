@@ -13,21 +13,173 @@ require 'csv'
 
 class ESUtils
   
+  attr_accessor :hinst
   attr_reader :elastic, :index
-  
+
+  #+++++++++++
+  # Deprecated
   @@stypes = %w{ client expense_category project task user }
   @@ctypes = %w{ expense invoice time }
+  #-----------
 
-  #class Harvest
-  #end
+  class MyLogger
+    
+    def initialize(log_file)
+      @logfile = log_file
+    end
+    
+    def set_log_file(log_file)
+      @logfile = log_file
+    end
+    
+    def log(msg, method=nil, lineno=nil)
+      now = DateTime.now.strftime("%Y-%m-%d %H:%M:%S.%L")    
+      logmsg = ""
+      if method.nil?
+        logmsg = "#{msg}"
+      else
+        mthd = method
+        mthd = "#{method}[#{lineno}]" if !lineno.nil?
+        logmsg = "#{mthd}: #{msg}"
+      end
+      @logfile.puts("#{now}: #{logmsg}") if !@logfile.nil?
+    end
   
+  end
+  
+  class  MyCache < MyLogger
+    attr_accessor :path
+    
+    def initialize(log_file=nil)
+      super(log_file)
+      @verbose = false
+      @debug = false
+      @path = nil
+    end
+
+    def set_verbose(verbose, debug=false)
+      @verbose = verbose
+      @debug = debug
+    end
+
+    def read_cache_(fname)
+      data = File.open(fname, 'r') do |json|
+        JSON.load(json)
+      end
+    end
+  
+    def write_cache_(fname, data)
+      File.open(fname, 'w') do |json|
+        json.puts(JSON.pretty_generate(data))
+      end
+    end
+
+    def read_cache(type, unwind=false, postfix=nil)
+      fname = "#{@path}/#{type}"
+      fname = "#{fname}-#{postfix}" if postfix
+      puts "Reading #{type} records from cache file #{fname}.json" if @verbose
+      self.log("Reading #{type} records from cache file #{fname}.json", __method__, __LINE__)
+      arr = self.read_cache_("#{fname}.json")
+      data = arr
+      if unwind
+        # The problem with writing out data to a JSON file and then reading it back 
+        # is that you lose the detail of the type of the array elements.
+        # When you load the data back from the file each element is a Hash with the
+        # original type name as its single index.
+        data = []
+        arr.each do |element|
+          data.push(element[type])
+        end
+      end
+      data
+    end
+  
+    def write_cache(type, data, postfix=nil)
+      fname = "#{@path}/#{type}"
+      fname = "#{fname}-#{postfix}" if postfix
+      puts ".. and writing cache file #{fname}.json" if @verbose
+      self.log("Writing to file #{fname}", __method__, __FILE__)
+      self.write_cache_("#{fname}.json", data)
+      # If we have just cached the data then make sure that we read it back from the file
+      self.read_cache(type, true)
+    end
+  
+  end
+  
+  class MyHarvest < MyLogger
+    attr_reader :client, :cache
+    
+    @@stypes = %w{ client expense_category project task user }
+    @@ctypes = %w{ expense invoice time }
+    
+    def initialize(log_file=nil)
+      super(log_file)
+      @verbose = false
+      @debug = false
+
+      @config_file = ".harvest"
+      @config = {}
+      @client = {}
+      @cache = MyCache.new
+    end
+    
+    def set_verbose(verbose, debug=false)
+      @verbose = verbose
+      @debug = debug
+      @cache.set_verbose(verbose, debug)
+    end
+
+    def get_harvest_config(conf_file=nil)
+      @config_file = conf_file.nil? ? @config_file : conf_file
+      self.log("Reading harvest config from file '#{@config_file}' ", __method__, __LINE__)
+      @config = YAML.load_file(@config_file)
+    end
+    
+    def init_harvest_client(conf_file=nil)
+      get_harvest_config(conf_file) if @config.empty?
+      self.log("Initialising harvest client", __method__, __LINE__)
+      @client = Harvest.client(subdomain: @config['subdomain'], 
+                                username: @config['username'], 
+                                password: @config['password'])
+    end
+    
+    def set_cache_path(path)
+      @cache.path = path
+    end
+    
+    def stype?(type)
+      @@stypes.include?(type)
+    end
+  
+    def ctype?(type)
+      @@ctypes.include?(type)
+    end
+  
+    def pull_type(type)
+      cmd = "@client.#{type}s.all"
+      cmd = "@client.expense_categories.all" if type == 'expense_category'
+      puts "Reading #{type} records from Harvest - #{cmd}" if @verbose
+      self.log("Reading #{type} records from Harvest - #{cmd}", __method__, __LINE__)
+      data = eval(cmd)
+      self.log("Read #{data.size} records", __method__, __LINE__)
+      @cache.write_cache(type, data)
+      @logfile.flush
+      data
+    end
+  
+  end
+  
+  #+++++++++++
+  # Deprecated
   def stype?(type)
-    @@stypes.include?(type)
+    #@@stypes.include?(type)
+    @hinst.stype?(type)
   end
-  
   def ctype?(type)
-    @@ctypes.include?(type)
+    #@@ctypes.include?(type)
+    @hinst.ctype?(type)
   end
+  #-----------
   
   def log(msg, method=nil, lineno=nil)
     now = DateTime.now.strftime("%Y-%m-%d %H:%M:%S.%L")    
@@ -45,7 +197,12 @@ class ESUtils
   def initialize(opt)
     @debug = false
     @verbose = false
-    @logfile = File.open("#{File.dirname($0)}/logs/out.log", "w+")
+    @logfile = File.open("#{File.dirname($0)}/logs/out.log", "a")
+    
+    @hinst = MyHarvest.new
+    @hinst.set_log_file(@logfile)
+    @hinst.set_cache_path(opt.index)
+    @hinst.init_harvest_client
     
     @index = nil
     
@@ -73,11 +230,12 @@ class ESUtils
   def set_opt(opt)
     @debug = opt.debug
     @verbose = opt.verbose
+    @hinst.set_verbose(opt.verbose, opt.debug)
   end
 
-  def set_harvest(harvest, hv=nil)
-    @harvest = harvest
-    @hv = hv
+  def set_harvest(hv)
+    @harvest = hv[0]
+    @hv = hv[1]
   end
   
   def set_elasticsearch(idx, es)
@@ -107,7 +265,8 @@ class ESUtils
       index = args.shift
       puts "Make call to pull_type('#{index}', '#{type}')" if @verbose
       self.log("  Handing off to pull_type('#{index}', '#{type}')", __method__, __LINE__)
-      self.pull_type(index, type)
+      #self.pull_type(index, type)
+      @hinst.pull_type(type)
       
     elsif type = m[/^pull_([a-z_]+)s$/,1] and @@ctypes.include?(type)
       
@@ -162,6 +321,7 @@ class ESUtils
     self.log("Completed", __method__, __LINE__)
   end
   
+=begin
   # Methods for caching Harvest data locally
   # The read & write cache methods are probably generally useful
   def read_cache_(fname)
@@ -175,13 +335,13 @@ class ESUtils
       json.puts(JSON.pretty_generate(data))
     end
   end
-
+  
   def read_cache(index, type, unwind=false, postfix=nil)
     fname = "#{index}/#{type}"
     fname = "#{fname}-#{postfix}" if postfix
     puts "Reading #{type} records from cache file #{fname}.json" if @verbose
     self.log("Reading #{type} records from cache file #{fname}.json", __method__, __LINE__)
-    arr = self.read_cache_("#{fname}.json")
+    arr = @hinst.cache.read_cache_("#{fname}.json")
     data = arr
     if unwind
       # The problem with writing out data to a JSON file and then reading it back 
@@ -201,14 +361,16 @@ class ESUtils
     fname = "#{fname}-#{postfix}" if postfix
     puts ".. and writing cache file #{fname}.json" if @verbose
     self.log("Writing to file #{fname}", __method__, __FILE__)
-    self.write_cache_("#{fname}.json", data)
+    @hinst.cache.write_cache_("#{fname}.json", data)
     # If we have just cached the data then make sure that we read it back from the file
-    self.read_cache(index, type, true)
+    @hinst.cache.read_cache(type, true)
   end
+=end
   
   def read_time_cache(index, type, postfix=nil)
     self.log("Reading from time cache", __method__, __LINE__)
-    data = self.read_cache(index, type, true, postfix)
+    #data = self.read_cache(index, type, true, postfix)
+    data = @hinst.cache.read_cache(type, true, postfix)
     self.log("Reading #{data.size} records from time cache", __method__, __LINE__)
     data
   end
@@ -218,7 +380,8 @@ class ESUtils
     fname = "#{fname}-#{postfix}" if postfix
     puts "Writing cache file #{fname}.json" if @verbose
     self.log("Writing to file #{fname}.json", __method__, __LINE__)
-    self.write_cache_("#{fname}.json", data)
+    #self.write_cache_("#{fname}.json", data)
+    @hinst.cache.write_cache_("#{fname}.json", data)
     puts ".. and reading cache file #{fname}.json" if @verbose
     self.log(".. and reading cache file #{fname}.json", __method__, __LINE__)
     self.read_time_cache(index, type, postfix)
@@ -280,7 +443,8 @@ class ESUtils
     # The @<type>_id maps are helpful for de-normalising docs before indexing them
     puts "Setup #{type}_id index" if @verbose
     self.log("Setup #{type}_id index", __method__, __LINE__)
-    cmd = "self.read_cache('#{index}', '#{type}', true)"
+    #cmd = "self.read_cache('#{index}', '#{type}', true)"
+    cmd = "@hinst.cache.read_cache('#{type}', true)"
     puts cmd if @debug
     arr = eval(cmd)
     arr.each do |element|
@@ -298,7 +462,8 @@ class ESUtils
       postfix = sprintf("%d-%02d", year, month)
       cmd = "self.read_time_cache(index, type, postfix)"
     else
-      cmd = "self.read_cache('#{index}', '#{type}', true)"
+      #cmd = "self.read_cache('#{index}', '#{type}', true)"
+      cmd = "@hinst.cache.read_cache('#{type}', true)"
     end
     puts cmd if @debug
     arr = eval(cmd)
@@ -315,7 +480,8 @@ class ESUtils
   def augment_clients(index, type, idmap)
     # A bit of a hack for now
     self.log("Adding location data", __method__, __LINE__)
-    loc = self.read_cache_("#{index}/#{type}-location.json")
+    #loc = self.read_cache_("#{index}/#{type}-location.json")
+    loc = @hinst.cache.read_cache_("#{index}/#{type}-location.json")
     loc.each do |locn|
       id = locn['client']['id']
       #pp id
@@ -406,7 +572,8 @@ class ESUtils
   end
   
   def users_by_date(index)
-    users = self.read_cache(index, 'user', true)
+    #users = self.read_cache(index, 'user', true)
+    users = @hinst.cache.read_cache('user', true)
     # Sort them on created_at date
     self.sort_on_field(users, 'created_at')
   end
@@ -445,15 +612,17 @@ class ESUtils
   
   # Harvest specific
   def pull_type(index, type)
-    cmd = "@harvest.#{type}s.all"
-    cmd = "@harvest.expense_categories.all" if type == 'expense_category'
-    puts "Reading #{type} records from Harvest - #{cmd}" if @verbose
-    self.log("Reading #{type} records from Harvest - #{cmd}", __method__, __LINE__)
-    data = eval(cmd)
-    self.log("Read #{data.size} records", __method__, __LINE__)
-    self.write_cache(index, type, data)
-    @logfile.flush
-    data
+    #cmd = "@harvest.#{type}s.all"
+    #cmd = "@harvest.expense_categories.all" if type == 'expense_category'
+    #puts "Reading #{type} records from Harvest - #{cmd}" if @verbose
+    #self.log("Reading #{type} records from Harvest - #{cmd}", __method__, __LINE__)
+    #data = eval(cmd)
+    #self.log("Read #{data.size} records", __method__, __LINE__)
+    #self.write_cache(index, type, data)
+    #@hinst.cache.write_cache(type, data)
+    #@logfile.flush
+    @hinst.pull_type(type)
+    #data
   end
   
   # Harvest specific
@@ -581,33 +750,52 @@ class ESUtils
     type = 'user'
   end
   
-  def delete_index()
-    exist = @elastic.indices.exists?(index: @index)
-    puts "Check if index '#{@index}' exists returns #{exist}" if @verbose
+  def delete_index(index)
+    exist = @elastic.indices.exists?(index: index)
+    puts "Check if index '#{index}' exists returns #{exist}" if @verbose
     if exist
-      puts "So delete index #{@index}" if @verbose
-      stat = elastic.indices.delete(index: @index)
-      exist = !elastic.indices.exists?(index: @index)
+      puts "So delete index #{index}" if @verbose
+      stat = elastic.indices.delete(index: index)
+      exist = !elastic.indices.exists?(index: index)
     else
       deleted = !exist
     end
     deleted
   end
   
-  def create_es_index(index, force=false)
-    idx_def = self.read_cache_("#{index}/#{index}.json")
+  def create_index(index, indexf, force=false)
+    if force
+      if @elastic.indices.exists?(index: index)
+        self.delete_index(index)
+      end
+    end
+    #idx_def = self.read_cache_(indexf)
+    idx_def = @hinst.cache.read_cache_(indexf)
+    puts "Creating index #{index}"
+    #puts idx_def
+    created = @elastic.indices.create(index: index, body: idx_def)['acknowledged']
+    #puts created
+  end
+    
+  def create_es_index(index, idx_f, force=false)
+    indexf = "#{idx_f}.json" if FileTest.exist?("#{idx_f}.json")
+    indexf = "#{index}/#{idx_f}.json" if FileTest.exist?("#{index}/#{idx_f}.json")
+    #idx_def = self.read_cache_(indexf)
+    idx_def = @hinst.cache.read_cache_(indexf)
     if @elastic.indices.exists?(index: index)
       if force
-        self.delete_index()
+        self.delete_index(index)
         puts "Creating index #{index}"
-        created = @elastic.indices.create(index: index, body: idx_def)['acknowledged']
+        #created = @elastic.indices.create(index: index, body: idx_def)['acknowledged']
+        created = self.create_index(index, "#{index}/#{idx_f}.json")
       else
         puts "Index #{index} already exists so backing off"
         created = false
       end
     else
       puts "Creating index #{index}"
-      created = @elastic.indices.create(index: index, body: idx_def)['acknowledged']
+      #created = @elastic.indices.create(index: index, body: idx_def)['acknowledged']
+      created = self.create_index(index, "#{index}/#{idx_f}.json")
     end
     #puts "Created = #{created}"
     created
@@ -618,7 +806,8 @@ class ESUtils
     pp fields if @debug
 
     self.log("Need to get full #{type} records from cache", __method__, __LINE__)
-    docs = self.read_cache(index, type, true) if docs.nil?
+    #docs = self.read_cache(index, type, true) if docs.nil?
+    docs = @hinst.cache.read_cache(type, true) if docs.nil?
     docs.each do |o|
       #pp o
       _id = o[0]
@@ -947,12 +1136,11 @@ class ESUtils
 end
 
 def get_harvest_handle(opt)
-  hv = YAML.load_file(opt.harvest)
+  hinst = ESUtils::MyHarvest.new(File.open("#{File.dirname($0)}/logs/harvest.log", "a"))
+  hv = hinst.get_harvest_config(opt.harvest)
   pp hv if opt.debug
-  harvest = Harvest.client(subdomain: hv['subdomain'], 
-                            username: hv['username'], 
-                            password: hv['password'])
-  return harvest, hv
+  harvest = hinst.init_harvest_client
+  return harvest, hv, hinst
 end
 
 def get_esu_handle(opt)

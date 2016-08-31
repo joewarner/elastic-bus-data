@@ -53,10 +53,12 @@ end
 #
 
 def cache_update(opt)
+  stypes = ESUtils::MyHarvest.class_eval('@@stypes')
   harvest = get_harvest_handle(opt)
   esu = get_esu_handle(opt)
-  esu.set_harvest(harvest[0], harvest[1])
+  esu.set_harvest(harvest)
   puts "cache_update('#{opt.type}')"
+  hinst = esu.hinst
   if esu.stype?(opt.type)
     puts "  pull_#{opt.type}s('#{opt.index}')"
     # Year and Month not 'required' for stypes, so put dummy values in there
@@ -85,8 +87,8 @@ def cache_update(opt)
 end
 
 def cache_update_all(opt, window=0)
-  stypes = ESUtils.class_eval("@@stypes")
-  ctypes = ESUtils.class_eval("@@ctypes")
+  stypes = ESUtils::MyHarvest.class_eval("@@stypes")
+  ctypes = ESUtils::MyHarvest.class_eval("@@ctypes")
   # Loop over stypes and just do a cache_update on all of them
   stypes.each do |type|
     opt.send("type=", type)
@@ -118,8 +120,8 @@ def cache_update_all(opt, window=0)
 end
 
 def cache_reload(opt)
-  stypes = ESUtils.class_eval("@@stypes")
-  ctypes = ESUtils.class_eval("@@ctypes")
+  stypes = ESUtils::MyHarvest.class_eval("@@stypes")
+  ctypes = ESUtils::MyHarvest.class_eval("@@ctypes")
   types = [].concat(stypes).concat(ctypes)
   
   # The brutal approach
@@ -169,8 +171,8 @@ def update_es(opt, window=0)
 end
 
 def update_es_all(opt, window=0)
-  stypes = ESUtils.class_eval("@@stypes")
-  ctypes = ESUtils.class_eval("@@ctypes")
+  stypes = ESUtils::MyHarvest.class_eval("@@stypes")
+  ctypes = ESUtils::MyHarvest.class_eval("@@ctypes")
   # Everything
   [].concat(stypes).concat(ctypes).each do |type|
     opt.send("type=", type)
@@ -180,12 +182,22 @@ def update_es_all(opt, window=0)
   end
 end
 
+def renew_index(opt)
+  index = opt.index
+  indexf = opt.index_file
+  
+  esu = get_esu_handle(opt)
+  init_elasticsearch(opt, esu)
+  esu.create_index(index, indexf, true) if !opt.no_action
+  
+end
+
 def rebuild_index(opt)
   esu = get_esu_handle(opt)
   init_elasticsearch(opt, esu)
-  esu.create_es_index(opt.index, true) if !opt.no_action
-  stypes = ESUtils.class_eval("@@stypes")
-  ctypes = ESUtils.class_eval("@@ctypes")
+  esu.create_es_index(opt.index, opt.index, true) if !opt.no_action
+  stypes = ESUtils::MyHarvest.class_eval("@@stypes")
+  ctypes = ESUtils::MyHarvest.class_eval("@@ctypes")
   # Everything
   stypes.each do |type|
     opt.send("type=", type)
@@ -217,4 +229,6 @@ elsif opt.update_es
   update_es(opt, 4)
 elsif opt.update_es_all
   update_es_all(opt, 4)
+elsif opt.renew_index
+  renew_index(opt)
 end

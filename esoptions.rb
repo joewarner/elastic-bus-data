@@ -29,6 +29,8 @@ class ESOptions
     opt.export = false
 
     opt.es_config = '.esutils'
+    opt.renew_index = false
+    opt.index_file = nil
     opt.rebuild_index = false
     opt.index = nil
     
@@ -94,6 +96,10 @@ class ESOptions
         opt.export = true
         opt.cache_reload = true
       end
+      o.on("--renew-index INDEX_FILE") do |arg|
+        opt.renew_index = true
+        opt.index_file = arg
+      end
       o.on("--update-es") do |arg|
         opt.update_es = true
       end
@@ -129,6 +135,11 @@ class ESOptions
       puts "             --year is '#{opt.year}'" if opt.type and opt.year
       puts "              --month is '#{opt.month}'" if opt.type and opt.month
       puts
+    end
+    if opt.renew_index
+      puts "--renew-index is #{opt.renew_index}"
+      puts "        --index is '#{opt.index}'"
+      puts "  Index mapping is '#{opt.index_file}'"
     end
     if opt.export and (opt.rebuild ) #or opt.index)
       puts "Your program should likely be built so that it rejects this combination of options"
