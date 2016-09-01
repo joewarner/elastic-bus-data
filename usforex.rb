@@ -86,6 +86,7 @@ class USForex
   
   def gen_bulk_file(bulk_name, cutoff_date)
     bulk = File.open(bulk_name, "w")
+    self._log("Creating file for bulk update of elasticsearch", __LINE__, __method__, __FILE__)
 
     @files.each do |f|
       self._log("Processing file #{f}", __LINE__, __method__, __FILE__)

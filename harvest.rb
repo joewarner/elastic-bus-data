@@ -74,6 +74,27 @@ class ESUtils
       self.read_cache(type, true)
     end
   
+    def read_time_cache(type, postfix=nil)
+      self._log("Reading from time cache", __LINE__, __method__, __FILE__)
+      #data = self.read_cache(index, type, true, postfix)
+      data = self.read_cache(type, true, postfix)
+      self._log("Reading #{data.size} records from time cache", __LINE__, __method__, __FILE__)
+      data
+    end
+
+    def write_time_cache(type, data, postfix=nil)
+      fname = "#{@path}/#{type}"
+      fname = "#{fname}-#{postfix}" if postfix
+      msg = "Writing cache file #{fname}.json"
+      puts msg if @verbose
+      self._log(msg,  __LINE__, __method__, __FILE__)
+      self.write_cache_("#{fname}.json", data)
+      msg =  ".. and reading cache file #{fname}.json"
+      puts msg if @verbose
+      self._log(msg,  __LINE__, __method__, __FILE__)
+      self.read_time_cache(type, postfix)
+    end
+  
   end
   
   class MyHarvest
@@ -272,25 +293,29 @@ class ESUtils
     self.log("Completed", __method__, __LINE__)
   end
   
+=begin
   def read_time_cache(index, type, postfix=nil)
-    self.log("Reading from time cache", __method__, __LINE__)
+    #self.log("Reading from time cache", __method__, __LINE__)
     #data = self.read_cache(index, type, true, postfix)
-    data = @hinst.cache.read_cache(type, true, postfix)
-    self.log("Reading #{data.size} records from time cache", __method__, __LINE__)
-    data
+    #data = @hinst.cache.read_cache(type, true, postfix)
+    #self.log("Reading #{data.size} records from time cache", __method__, __LINE__)
+    data = @hinst.cache.read_time_cache(type, postfix)
+    #data
   end
 
   def write_time_cache(index, type, data, postfix=nil)
-    fname = "#{index}/#{type}"
-    fname = "#{fname}-#{postfix}" if postfix
-    puts "Writing cache file #{fname}.json" if @verbose
-    self.log("Writing to file #{fname}.json", __method__, __LINE__)
+    #fname = "#{index}/#{type}"
+    #fname = "#{fname}-#{postfix}" if postfix
+    #puts "Writing cache file #{fname}.json" if @verbose
+    #self.log("Writing to file #{fname}.json", __method__, __LINE__)
     #self.write_cache_("#{fname}.json", data)
-    @hinst.cache.write_cache_("#{fname}.json", data)
-    puts ".. and reading cache file #{fname}.json" if @verbose
-    self.log(".. and reading cache file #{fname}.json", __method__, __LINE__)
-    self.read_time_cache(index, type, postfix)
+    #@hinst.cache.write_cache_("#{fname}.json", data)
+    #puts ".. and reading cache file #{fname}.json" if @verbose
+    #self.log(".. and reading cache file #{fname}.json", __method__, __LINE__)
+    #self.read_time_cache(index, type, postfix)
+    @hinst.cache.write_time_cache(type, data, postfix)
   end
+=end
   
   def get_invoice(index, id, hv)
     fname = "#{index}/inv-#{id}.json"
@@ -365,7 +390,8 @@ class ESUtils
     self.log("Setup #{type}_id2 index", __method__, __LINE__)
     if !year.nil? and !month.nil?
       postfix = sprintf("%d-%02d", year, month)
-      cmd = "self.read_time_cache(index, type, postfix)"
+      #cmd = "self.read_time_cache(index, type, postfix)"
+      cmd = "@hinst.cache.read_time_cache(type, postfix)"
     else
       #cmd = "self.read_cache('#{index}', '#{type}', true)"
       cmd = "@hinst.cache.read_cache('#{type}', true)"
@@ -555,7 +581,7 @@ class ESUtils
     puts "Found #{data.size} #{type} records" if @verbose
     self.log("Found #{data.size} #{type} records", __method__, __LINE__)
     postfix = sprintf("%d-%02d", year, month)
-    self.write_time_cache(index, type, data, postfix)
+    @hinst.cache.write_time_cache(type, data, postfix)
     @logfile.flush
   end
   
@@ -588,7 +614,7 @@ class ESUtils
     end
 
     postfix = sprintf("%d-%02d", year, month)
-    self.write_time_cache(index, type, invoice, postfix)    
+    @hinst.cache.write_time_cache(type, invoice, postfix)    
     @logfile.flush
 
     self.log("Completed", __method__, __LINE__)
@@ -847,7 +873,8 @@ class ESUtils
     iname = "invoice-#{mth}.json"
     self.log("  Reading invoices from file #{index}/#{iname}", __method__, __LINE__)
 
-    invoices = self.read_time_cache(index, type, "#{mth}")
+    #invoices = self.read_time_cache(index, type, "#{mth}")
+    invoices = @hinst.cache.read_time_cache(type, "#{mth}")
     invoices.each_index do |i|
       inv = invoices[i]
       _id = inv['id']
