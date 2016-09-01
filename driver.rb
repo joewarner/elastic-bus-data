@@ -59,11 +59,11 @@ def cache_update(opt)
   esu.set_harvest(harvest)
   puts "cache_update('#{opt.type}')"
   hinst = esu.hinst
-  if esu.stype?(opt.type)
+  if esu.hinst.stype?(opt.type)
     puts "  pull_#{opt.type}s('#{opt.index}')"
     # Year and Month not 'required' for stypes, so put dummy values in there
     esu.instance_eval("pull_#{opt.type}s('#{opt.index}', 0, 0)") if !opt.no_action
-  elsif esu.ctype?(opt.type)
+  elsif esu.hinst.ctype?(opt.type)
     if opt.index.eql?('harvest-uk')
       syear = 2014
       smonth = 10
@@ -137,7 +137,7 @@ def update_es(opt, window=0)
   esu = get_esu_handle(opt)
   init_elasticsearch(opt, esu)
   puts "update_es('#{opt.type}')"
-  if esu.stype?(opt.type)
+  if esu.hinst.stype?(opt.type)
     puts "  index_outdated_#{opt.type}s('#{opt.index}')"
     esu.instance_eval("index_outdated_#{opt.type}s('#{opt.index}', 0, 0)") if !opt.no_action
   elsif esu.ctype?(opt.type)
