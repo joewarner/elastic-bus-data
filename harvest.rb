@@ -4,7 +4,7 @@ $LOAD_PATH.unshift File.expand_path($0)
 
 load 'esoptions.rb'
 load 'mylogger.rb'
-load 'cache.rb'
+load 'mycache.rb'
 
 require 'elasticsearch'
 require 'harvested'
@@ -115,7 +115,7 @@ class ESUtils
     end
     
     def init_harvest_client(conf_file=nil)
-      get_harvest_config(conf_file) if @config.empty?
+      self.get_harvest_config(conf_file) if @config.empty?
       self._log("Initialising harvest client", __LINE__, __method__, __FILE__)
       @client = Harvest.client(subdomain: @config['subdomain'], 
                                 username: @config['username'], 
@@ -340,9 +340,49 @@ class ESUtils
   end
   
   class MyElastic
+    attr_reader :client, :cache, :logfile
+    
+    include MyLogger
+    
+    def initialize(log_file=nil)
+      @logfile = log_file
+      @verbose = false
+      @debug = false
+
+      @config_file = ".esutils"
+      @config = {}
+      @client = {}
+      @cache = MyCache.new(log_file)
+      @index = nil
+    end
+    
+    def set_verbose(verbose, debug=false)
+      @verbose = verbose
+      @debug = debug
+      @cache.set_verbose(verbose, debug)
+    end
+    
+    def set_index(index)
+      @index = index
+    end
+    
+    def get_elasticsearch_config(conf_file=nil)
+      @config_file = conf_file.nil? ? @config_file : conf_file
+      self._log("Reading elasticsearch config from file '#{@config_file}' ", __LINE__, __method__, __FILE__)
+      @config = YAML.load_file(@config_file)
+    end
+    
+    def init_elasticsearch_client(conf_file=nil)
+      self.get_elasticsearch_config(conf_file) if @config.empty?
+      self._log("Initialising elasticsearch client", __LINE__, __method__, __FILE__)
+      @client = Elasticsearch::Client.new(host: @config['host'], 
+                                          user: @config['user'], 
+                                          password: @config['pass'])
+    end
+
   end
 
-  attr_accessor :hinst
+  attr_accessor :hinst, :einst
   attr_reader :elastic, :index
 
   include MyLogger
@@ -355,6 +395,10 @@ class ESUtils
     @hinst = MyHarvest.new(@logfile)
     @hinst.set_cache_path(opt.index)
     @hinst.init_harvest_client
+    
+    @einst = MyElastic.new(@logfile)
+    @einst.set_index(opt.index)
+    @einst.init_elasticsearch_client
     
     @index = nil
     
@@ -370,22 +414,11 @@ class ESUtils
     self._log("Completed", __LINE__, __method__, __FILE__)
   end
   
-=begin
-    def initialize_reverse_indexes(index)
-    self._log("Entering", __LINE__, __method__, __FILE__)
-    self.setup_client_ids(index)            if @client_id.empty?
-    self.setup_expense_category_ids(index)  if @expense_category_id.empty?
-    self.setup_project_ids(index)           if @project_id.empty?
-    self.setup_task_ids(index)              if @task_id.empty?
-    self.setup_user_ids(index)              if @user_id.empty?
-    self._log("Completed", __LINE__, __method__, __FILE__)
-    self
-  end
-=end
   def set_opt(opt)
     @debug = opt.debug
     @verbose = opt.verbose
     @hinst.set_verbose(opt.verbose, opt.debug)
+    @einst.set_verbose(opt.verbose, opt.debug)
   end
 
   def set_harvest(hv)
@@ -608,46 +641,6 @@ class ESUtils
     @hinst.cache.write_time_cache(type, data, postfix)
     @logfile.flush
   end
-  
-=begin    
-  # Harvest specific
-  def pull_invoices(index, year=nil, month=nil)
-    @hinst.pull_invoices(year, month)
-
-    #self.initialize_reverse_indexes(index) if @user_id.empty?
-    type = "invoice"
-    invoice = []
-
-    puts "\npull_invoices: " if @verbose
-    self.log("pull_type_for_month('#{index}', '#{type}', #{year}, #{month})", __method__, __LINE__)
-    days = self.get_days_for_month(year, month)
-
-    from = Date.ordinal(year, days[0])
-    to = Date.ordinal(year, days[-1])
-    options = {:timeframe => {:from => from.strftime("%Y%m%d"), :to => to.strftime("%Y%m%d")}}
-    self.log("  Getting #{type} data for #{from.year}/#{from.mon}/#{from.day}-#{to.year}/#{to.mon}/#{to.day}", __method__, __LINE__)
-    ui = @harvest.invoices.all(options)
-    if ui.size > 0
-      #puts "    Concat'ing data"
-      invoice.concat(ui)
-    else
-      puts "      Empty data" if @debug
-    end
-        
-    puts "Found #{invoice.size} #{type} records" if @verbose
-    self.log("Found #{invoice.size} #{type} records", __method__, __LINE__)
-    invoice.each_index do |i|
-      invoice[i] = self.merge_csv_into_invoice(index, invoice[i]['id'], @hv)
-    end
-
-    postfix = sprintf("%d-%02d", year, month)
-    @hinst.cache.write_time_cache(type, invoice, postfix)    
-    @logfile.flush
-
-    self.log("Completed", __method__, __LINE__)
-    @logfile.flush
-  end
-=end
   
 =begin
   def sync_es_clients()
@@ -1089,6 +1082,7 @@ def get_harvest_handle(opt)
 end
 
 def get_esu_handle(opt)
+  #einst = ESUtils::MyElastic.new(File.open("#{File.dirname($0)}/logs/elastic.log", "a"))
   esu = ESUtils.new(opt)
 end
 
