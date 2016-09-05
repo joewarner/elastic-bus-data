@@ -37,6 +37,13 @@ class USFOptions
     opt.from = nil
     opt.to = nil
     opt.logfile = nil
+    
+    opt.rebuild_all = false
+    opt.reindex = false
+    opt.update_new = false
+    opt.index = nil
+    opt.alias = nil
+    
     opt_parser = OptionParser.new do |o|
       o.on("-a", "--all") do |arg|
         opt.all = true
@@ -128,7 +135,24 @@ if __FILE__ == $0
     logf = "#{logf}/#{File.basename($0, '.rb')}.log"
   end
   logfile = File.open("#{logf}", 'a')
+  
   usf = USForex.new(logfile)
+
+  if opt.rebuild_all
+    # Read all CSV files
+    # action = 'index' all docs
+    # on opt.index (which must be specified)
+  elsif opt.reindex
+    # Create new index and set mapping
+    # Re-index all docs from old index (can use alias for old index) to new (index must be specified)
+    # Swap the alias (which must be specified) over to new index
+  elsif opt.update_new
+    # Read all CSV files
+    # action = 'create'
+    # Look for 'missing' docs 
+    # on opt.index (which must be specified)
+  end
+  
   usf.get_forex_files
   usf.action = opt.action if !opt.action.nil?
   usf.gen_bulk_file('usforex.bulk', '2016-01-01')
