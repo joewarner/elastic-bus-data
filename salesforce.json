@@ -1,0 +1,50 @@
+{
+  "aliases" : {},
+  "mappings" : {
+    "account" : {
+      "properties" : {
+        "name" :            { "type" : "string" },
+        "owner" :           { "type" : "string" },
+        "parent" : {
+          "type" : "object",
+          "properties" : {
+            "id" :          { "type" : "string" },
+            "name" :        { "type" : "string" }
+          }
+        },
+        "harvest_id" :      { "type" : "string" },
+        "industry" :        { "type" : "string" },
+        "type" :            { "type" : "string" },
+        "updated_at" :      { "type" : "date" },
+        "last_modified" :   { "type" : "date" }
+      }
+    },
+    "opportunity" : {
+      "_parent" :           { "type" : "account" },
+      "properties" : {
+        "name" :            { "type" : "string" },
+        "from_stage" :      { "type" : "string" },
+        "to_stage" :        { "type" : "string" },
+        "stage_change" :    { "type" : "boolean" },
+        "stage_duration" :  { "type" : "long" },
+        "updated_at" :      { "type" : "date" },
+        "created_at" :      { "type" : "date" },
+        "currency" :        { "type" : "string" },
+        "amount" :          { "type" : "float" },
+        "gbp_amount" :      { "type" : "float" },
+        "usd_amount" :      { "type" : "float" },
+        "probability" :     { "type" : "float" },
+        "owner" :           { "type" : "string" },
+        "region" :          { "type" : "string" },
+        "close_date" :      { "type" : "date" },
+        "type" :            { "type" : "string" },
+        "lead_source" :     { "type" : "string" },
+        "partner" :         { "type" : "string" },
+        "closed" :          { "type" : "boolean" },
+        "won" :             { "type" : "boolean" }
+      }
+    }
+  },
+  "settings" : {},
+  "warmers" : {}
+ }

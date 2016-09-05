@@ -3,22 +3,22 @@
   "mappings" : {
     "expense_category" : {
       "properties" : {
-        "name" :          { "type" : "string" },
-        "updated_at" :    { "type" : "date" },
-        "created_at" :    { "type" : "date" }
+        "name" :            { "type" : "string" },
+        "updated_at" :      { "type" : "date" },
+        "created_at" :      { "type" : "date" }
       }
     },
     "client" : {
       "properties" : {
-        "name" :          { "type" : "string" },
-        "active" :        { "type" : "boolean" },
-        "currency" :      { "type" : "string" },
-        "updated_at" :    { "type" : "date" },
-        "created_at" :    { "type" : "date" },
+        "name" :            { "type" : "string" },
+        "active" :          { "type" : "boolean" },
+        "currency" :        { "type" : "string" },
+        "updated_at" :      { "type" : "date" },
+        "created_at" :      { "type" : "date" },
         "currency_symbol" : { "type" : "string", "index" : "not_analyzed" },
-        "details" :       { "type" : "string" },
-        "address" :       { "type" : "string", "index" : "not_analyzed" },
-        "location":       { "type" : "geo_point" }
+        "details" :         { "type" : "string" },
+        "address" :         { "type" : "string", "index" : "not_analyzed" },
+        "location":         { "type" : "geo_point" }
       }
     },
     "expense" : {
@@ -26,33 +26,31 @@
         "project_id" : {
           "type" : "object",
           "properties" : {
-            "id" :        { "type" : "long" },
-            "name" :      { "type" : "string" }
+            "id" :          { "type" : "long" },
+            "name" :        { "type" : "string" }
           } 
         },
         "user_id" : {
           "type" : "object",
           "properties" : {
-            "id" :        { "type" : "long" },
-            "name" :      { "type" : "string" }
+            "id" :          { "type" : "long" },
+            "name" :        { "type" : "string" }
           }
         },
         "expense_category_id" : {
           "type" : "object",
           "properties" : {
-            "id" :        { "type" : "long" },
-            "name" :      { "type" : "string" }
+            "id" :          { "type" : "long" },
+            "name" :        { "type" : "string" }
           }
         },
-        "company_id" : {
-          "type" : "long"
-        },
-        "total_cost" :    { "type" : "float" },
-        "notes" :         { "type" : "string" },
-        "billable" :      { "type" : "boolean" },
-        "spent_at" :      { "type" : "date" },
-        "updated_at" :    { "type" : "date" },
-        "created_at" :    { "type" : "date" }
+        "company_id" :      { "type" : "long" },
+        "total_cost" :      { "type" : "float" },
+        "notes" :           { "type" : "string" },
+        "billable" :        { "type" : "boolean" },
+        "spent_at" :        { "type" : "date" },
+        "updated_at" :      { "type" : "date" },
+        "created_at" :      { "type" : "date" }
       }
     },
     "invoice" : {
@@ -60,29 +58,29 @@
         "client_id" : { 
           "type" : "object",
           "properties" : {
-            "id" :        { "type" : "long" },
-            "name" :      { "type" : "string" }
+            "id" :          { "type" : "long" },
+            "name" :        { "type" : "string" }
           } 
         },
-        "number" :        { "type" : "string" },
-        "amount" :        { "type" : "float" },
+        "number" :          { "type" : "string" },
+        "amount" :          { "type" : "float" },
         "csv_line_items" : {
           "type" : "nested",
           "properties" : {
-            "kind" :      { "type" : "string" },
+            "kind" :        { "type" : "string" },
             "description" : { "type" : "string" },
-            "quantity" :  { "type" : "float" },
-            "unit_price" : { "type" : "float" },
-            "amount" :    { "type" : "float" },
-            "taxed" :     { "type" : "boolean" },
-            "taxed2" :    { "type" : "boolean" },
-            "gbp_amount" :    { "type" : "float" },
-            "usd_amount" :    { "type" : "float" },
+            "quantity" :    { "type" : "float" },
+            "unit_price" :  { "type" : "float" },
+            "amount" :      { "type" : "float" },
+            "taxed" :       { "type" : "boolean" },
+            "taxed2" :      { "type" : "boolean" },
+            "gbp_amount" :  { "type" : "float" },
+            "usd_amount" :  { "type" : "float" },
             "project_id" : { 
               "type" : "object",
               "properties" : {
-                "id" :    { "type" : "long" },
-                "name" :  { "type" : "string" }
+                "id" :      { "type" : "long" },
+                "name" :    { "type" : "string" }
               }
             }
           }
@@ -99,22 +97,22 @@
         "client_id" : { 
           "type" : "object",
           "properties" : {
-            "id" :        { "type" : "long" },
-            "name" :      { "type" : "string" }
+            "id" :          { "type" : "long" },
+            "name" :        { "type" : "string" }
           } 
         },
-        "name" :          { "type" : "string" },
-        "active" :        { "type" : "boolean" },
-        "billable" :      { "type" : "boolean" },
-        "updated_at" :    { "type" : "date" },
-        "created_at" :    { "type" : "date" }
+        "name" :            { "type" : "string" },
+        "active" :          { "type" : "boolean" },
+        "billable" :        { "type" : "boolean" },
+        "updated_at" :      { "type" : "date" },
+        "created_at" :      { "type" : "date" }
       }
     },
     "task" : {
       "properties" : {
-        "name" :          { "type" : "string"},
-        "updated_at" :    { "type" : "date" },
-        "created_at" :    { "type" : "date" }
+        "name" :            { "type" : "string"},
+        "updated_at" :      { "type" : "date" },
+        "created_at" :      { "type" : "date" }
       }
     },
     "time" : {
@@ -122,47 +120,47 @@
         "client_id" : { 
           "type" : "object",
           "properties" : {
-            "id" :        { "type" : "long" },
-            "name" :      { "type" : "string" }
+            "id" :          { "type" : "long" },
+            "name" :        { "type" : "string" }
           } 
         },
         "project_id" : {
           "type" : "object",
           "properties" : {
-            "id" :        { "type" : "long" },
-            "name" :      { "type" : "string" }
+            "id" :          { "type" : "long" },
+            "name" :        { "type" : "string" }
           } 
         },
         "task_id" : {
           "type" : "object",
           "properties" : {
-            "id" :        { "type" : "long" },
-            "name" :      { "type" : "string" }
+            "id" :          { "type" : "long" },
+            "name" :        { "type" : "string" }
           }
         },
         "user_id" : {
           "type" : "object",
           "properties" : {
-            "id" :        { "type" : "long" },
-            "name" :      { "type" : "string" }
+            "id" :          { "type" : "long" },
+            "name" :        { "type" : "string" }
           }
         },
-        "spent_at" :      { "type" : "date" },
-        "hours" :         { "type" : "float" },
-        "updated_at" :    { "type" : "date" },
-        "created_at" :    { "type" : "date" }
+        "spent_at" :        { "type" : "date" },
+        "hours" :           { "type" : "float" },
+        "updated_at" :      { "type" : "date" },
+        "created_at" :      { "type" : "date" }
       }
     },
     "user" : {
       "properties" : {
-        "email" :         { "type" : "string" },
-        "first_name" :    { "type" : "string" },
-        "last_name" :     { "type" : "string" },
-        "updated_at" :    { "type" : "date" },
-        "created_at" :    { "type" : "date" },
-        "is_contractor" : { "type" : "boolean" },
-        "is_active" :     { "type" : "boolean" },
-        "department" :    { "type" : "string" }
+        "email" :           { "type" : "string" },
+        "first_name" :      { "type" : "string" },
+        "last_name" :       { "type" : "string" },
+        "updated_at" :      { "type" : "date" },
+        "created_at" :      { "type" : "date" },
+        "is_contractor" :   { "type" : "boolean" },
+        "is_active" :       { "type" : "boolean" },
+        "department" :      { "type" : "string" }
       }
     }
   },
