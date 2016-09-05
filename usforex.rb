@@ -22,75 +22,132 @@ $LOAD_PATH.unshift File.expand_path($0)
 # rate between GBP and USD is 1.5 then that means that to convert 'from' GBP 'to' USD then we must
 # multiply each pound by 1.5 to obtain the equivalent number of dollars.
 
-load 'mylogger.rb'
+load 'MyLogger.rb'
+load 'MyElastic.rb'
 
 require 'optparse'
 require 'ostruct'
 require 'date'
 require 'pp'
 
-class USFOptions
-  def self.parse(args)
-    opt = OpenStruct.new
-    opt.all = false
-    opt.action = 'create'
-    opt.from = nil
-    opt.to = nil
-    opt.logfile = nil
-    
-    opt.rebuild_all = false
-    opt.reindex = false
-    opt.update_new = false
-    opt.index = nil
-    opt.alias = nil
-    
-    opt_parser = OptionParser.new do |o|
-      o.on("-a", "--all") do |arg|
-        opt.all = true
-      end
-      o.on("--action ACTION") do |arg|
-        opt.action = arg
-      end
-      #o.on("-f", "--from FROM") do |arg|
-      #  opt.from = arg
-      #end
-      #o.on("-t", "--to TO") do |arg|
-      #  opt.to = arg
-      #end
-      o.on("-l", "--logfile LOGFILE") do |arg|
-        opt.logfile = arg
-      end
-    end
-    opt_parser.parse!
-    opt
-  end
-end
-
 class USForex
-  
-  attr_accessor :action
+  attr_accessor   :action
+  attr_reader     :elastic
   
   include MyLogger
   
+  @@opt = OpenStruct.new
   @@currency = %w{ USD GBP EUR DKK SEK }
   
   def initialize(log_file=nil)
-    @logfile = log_file
-    @verbose = false
+    logdir = "#{File.dirname($0)}/logs"
+    if log_file.nil?
+      @@opt.logfile = "#{logdir}/#{File.basename($0, '.rb')}.log"
+    else
+      @@opt.logfile = "#{logdir}/#{log_file}"
+    end
+    @logfile = File.open("#{@@opt.logfile}", 'a')
+    self._log("Logging file opened #{@@opt.logfile}", __LINE__, __method__, __FILE__)
+    @verbose = true if @@opt.verbose
     @debug = false
+    
+    @elastic = MyElastic.new(@logfile)
+    @elastic.set_verbose(@@verbose, @@debug)
+    
     @files = []
-    @action = 'create'
+  end
+  
+  def self.parse(args)
+    @@opt = OpenStruct.new
+    #@@opt.all = false
+    @@opt.action = 'index'
+    @@opt.mapping_file = 'usforex.json'
+    #@@opt.from = nil
+    #@@opt.to = nil
+    @@opt.logfile = nil
+    
+    @@opt.rebuild_all = false
+    @@opt.reindex = false
+    @@opt.update_new = false
+    @@opt.index = nil
+    @@opt.alias = nil
+    
+    @@verbose = false
+    @@debug = false
+    
+    opt_parser = OptionParser.new do |o|
+      o.on("--rebuild-all") do |no_arg|
+        @@opt.rebuild_all = true
+      end
+      o.on("--reindex") do |no_arg|
+        @@opt.reindex = true
+      end
+      o.on("--update-new") do |no_arg|
+        @@opt.update_new = true
+      end
+      
+      #o.on("-a", "--all") do |no_arg|
+      #  @@opt.all = true
+      #end
+      o.on("--action ACTION") do |arg|
+        @@opt.action = arg
+      end
+      o.on("-i", "--index INDEX") do |arg|
+        @@opt.index = arg
+      end
+      o.on("-a", "--alias ALIAS") do |arg|
+        @@opt.alias = arg
+      end
+      o.on("--mapping-file MAPFILE") do |arg|
+        @@opt.mapping_file = arg
+      end
+      o.on("-l", "--logfile LOGFILE") do |arg|
+        @@opt.logfile = arg
+      end
+      o.on("-v", "--verbose") do |no_arg|
+        @@opt.verbose = true
+      end
+      o.on("-d", "--debug") do |no_arg|
+        @@opt.debug = true
+      end
+    end
+    opt_parser.parse!
+    @@opt
+  end
+  
+  def self.parse_and_validate(args)
+    self.parse(args)
+    valid = true
+    if @@opt.rebuild_all 
+      valid = false if @@opt.reindex or @@opt.update_new
+      valid = false if !@@opt.alias.nil?
+      valid = false if @@opt.index.nil?
+    elsif @@opt.reindex
+      valid = false if @@opt.rebuild_all or @@opt.update_new
+      valid = false if @@opt.alias.nil?
+      valid = false if @@opt.index.nil?
+      @@opt.action = 'create'
+    elsif @@opt.update_new
+      valid = false if @@opt.rebuild_all or @@opt.reindex
+      valid = false if !@@opt.alias.nil?
+      valid = false if @@opt.index.nil?
+    end
+    return @@opt, valid
   end
   
   def get_forex_files
     Dir.new('.').each do |f|
       csv = f[/^([A-Z]{3}-[A-Z]{3}.csv)$/,1]
-      @files.push(csv) if csv
+      if csv
+        @files.push(csv)
+        #puts "Found Forex file #{csv}" if @@opt.verbose
+      end
     end
     self._log("Found files #{@files}", __LINE__, __method__, __FILE__)
     @files
   end
   
+  # Method is deprecated now - get rid asap
   def gen_bulk_file(bulk_name, cutoff_date)
     bulk = File.open(bulk_name, "w")
     self._log("Creating file for bulk update of elasticsearch", __LINE__, __method__, __FILE__)
@@ -123,38 +180,81 @@ class USForex
     bulk.close
   end
   
+  def gen_bulk(file)
+    self._log("Creating instructions for bulk processing: #{file}", __LINE__, __method__, __FILE__)
+    
+    from  = file[/^([A-Z]{3})-[A-Z]{3}.csv$/,1]
+    to    = file[/^[A-Z]{3}-([A-Z]{3}).csv$/,1]
+
+    bulk = []
+    File.open(file).each_line do |line|
+      #puts line
+      date = line[/^([0-9\-\/]+)/,1]
+      exch = line[/,([0-9\.]+)/,1]
+      
+      d = date.split('/')
+      dd = Date.new(d[2].to_i, d[1].to_i, d[0].to_i)
+      data = {}
+      data['month'] = dd.to_s
+      data['rate']  = exch
+      data['from']  = from
+      data['to']    = to
+      
+      id = "#{dd.strftime('%Y%m')}_#{from}_#{to}"
+      doc = {}
+      doc['_index'] = @@opt.index
+      doc['_type']  = 'currency_rate'
+      doc['_id']    = id
+      doc['data']   = data
+      
+      action = {}
+      action[@@opt.action] = doc
+      #pp action
+      bulk.push(action)
+    end
+    self._log("  Processed #{bulk.size} lines from input", __LINE__, __method__, __FILE__)
+    bulk
+  end
+  
 end
 
 if __FILE__ == $0
-  
-  opt = USFOptions.parse(ARGV)
-  logf = "#{File.dirname($0)}/logs"
-  if !opt.logile.nil?
-    logf = "#{logf}/#{opt.logfile}"
-  else
-    logf = "#{logf}/#{File.basename($0, '.rb')}.log"
+  opt, valid = USForex.parse_and_validate(ARGV)
+  if !valid
+    puts "Invalid program options"
+    puts
+    exit
   end
-  logfile = File.open("#{logf}", 'a')
   
-  usf = USForex.new(logfile)
+  usf = USForex.new
 
   if opt.rebuild_all
     # Read all CSV files
-    # action = 'index' all docs
-    # on opt.index (which must be specified)
+    files = usf.get_forex_files
+    bulk = []
+    # Build one massive bulk file
+    files.each do |file|
+      puts "Processing Forex file: #{file}"
+      bulk.push(usf.gen_bulk(file))
+    end
+    bulk.flatten!
+    bulk
+    usf.elastic.bulk_action(bulk)
   elsif opt.reindex
     # Create new index and set mapping
     # Re-index all docs from old index (can use alias for old index) to new (index must be specified)
     # Swap the alias (which must be specified) over to new index
   elsif opt.update_new
     # Read all CSV files
+    files = usf.get_forex_files
+
     # action = 'create'
     # Look for 'missing' docs 
     # on opt.index (which must be specified)
   end
   
-  usf.get_forex_files
+=begin
   usf.action = opt.action if !opt.action.nil?
   usf.gen_bulk_file('usforex.bulk', '2016-01-01')
-  
+=end  
 end
