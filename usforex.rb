@@ -52,6 +52,8 @@ class USForex
     @debug = false
     
     @elastic = MyElastic.new(@logfile)
+    @elastic.get_elasticsearch_config
+    @elastic.init_elasticsearch_client
     @elastic.set_verbose(@@verbose, @@debug)
     
     @files = []
@@ -227,30 +229,53 @@ if __FILE__ == $0
   end
   
   usf = USForex.new
+  aliases = usf.elastic.get_aliases
+  #pp aliases
+  found_as_index = false
+  found_as_alias = false
 
   if opt.rebuild_all
-    # Read all CSV files
-    files = usf.get_forex_files
-    bulk = []
+
+    # Want to check and see if the specified index exists
+    # It could be either the index or an alias to it
+    # If it doesn't exist then we are going to need to create it
+    found_as_index = true if aliases.keys.include?(opt.index)
+    aliases.each_pair do |name,value|
+      #puts "name=#{name}, value=#{value}"
+      found_as_alias = true if value['aliases'].include?(opt.index)
+    end
+    #puts "found_as_index=#{found_as_index}"
+    #puts "found_as_alias=#{found_as_alias}"
+    if !(found_as_index or found_as_alias)
+      # We need to create the index from the mapping file
+      puts "Creating index #{opt.index}"
+      usf.elastic.create_index(opt.index, opt.mapping_file)
+    end
+    
     # Build one massive bulk file
-    files.each do |file|
+    bulk = []
+    usf.get_forex_files.each do |file|
       puts "Processing Forex file: #{file}"
       bulk.push(usf.gen_bulk(file))
     end
     bulk.flatten!
-    bulk
-    usf.elastic.bulk_action(bulk)
+    rc = usf.elastic.bulk_action(bulk)
+    puts "Processed #{bulk.size} actions"
+    puts "Errors => #{rc['errors']}" 
+    
   elsif opt.reindex
     # Create new index and set mapping
     # Re-index all docs from old index (can use alias for old index) to new (index must be specified)
     # Swap the alias (which must be specified) over to new index
   elsif opt.update_new
+    
     # Read all CSV files
     files = usf.get_forex_files
 
     # action = 'create'
     # Look for 'missing' docs 
     # on opt.index (which must be specified)
+
   end
   
 =begin
@@ -258,3 +283,4 @@ if __FILE__ == $0
   usf.gen_bulk_file('usforex.bulk', '2016-01-01')
 =end  
 end
+puts
