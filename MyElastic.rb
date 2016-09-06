@@ -2,7 +2,7 @@
 
 $LOAD_PATH.unshift File.expand_path($0)
 
-load 'mylogger.rb'
+require_relative './MyLogger.rb'
 
 require 'json'
 require 'pp'
