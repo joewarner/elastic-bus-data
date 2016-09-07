@@ -339,7 +339,7 @@ class ESUtils
   
   end
   
-  class MyElastic
+  class MyIntElastic
     attr_reader :client, :cache, :logfile
     
     include MyLogger
@@ -396,7 +396,7 @@ class ESUtils
     @hinst.set_cache_path(opt.index)
     @hinst.init_harvest_client
     
-    @einst = MyElastic.new(@logfile)
+    @einst = MyIntElastic.new(@logfile)
     @einst.set_index(opt.index)
     @einst.init_elasticsearch_client
     
@@ -1082,7 +1082,7 @@ def get_harvest_handle(opt)
 end
 
 def get_esu_handle(opt)
-  #einst = ESUtils::MyElastic.new(File.open("#{File.dirname($0)}/logs/elastic.log", "a"))
+  #einst = ESUtils::MyIntElastic.new(File.open("#{File.dirname($0)}/logs/elastic.log", "a"))
   esu = ESUtils.new(opt)
 end
 
