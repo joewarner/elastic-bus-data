@@ -75,8 +75,14 @@ class MyElastic
   def bulk_action(data)
     self._log("Process bulk data", __LINE__, __method__, __FILE__)
     rc = @client.bulk(body: data)
-    self._log("Bulk action comleted, errors => #{rc['errors']}")
+    self._log("Bulk action completed, errors => #{rc['errors']}")
     pp data if @debug
+    rc
+  end
+  
+  def search(index, type, query)
+    self._log("Search #{index}/#{type }using query #{query}", __LINE__, __method__, __FILE__)
+    rc = @client.search(index: index, type: type, body: query)
     rc
   end
   
