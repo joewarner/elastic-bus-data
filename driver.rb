@@ -135,7 +135,7 @@ end
 
 def update_es(opt, window=0)
   esu = get_esu_handle(opt)
-  init_elasticsearch(opt, esu)
+  #init_elasticsearch(opt, esu)
   puts "update_es('#{opt.type}')"
   if esu.hinst.stype?(opt.type)
     puts "  index_outdated_#{opt.type}s('#{opt.index}')"
