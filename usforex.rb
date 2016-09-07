@@ -23,8 +23,8 @@ $LOAD_PATH.unshift File.expand_path($0)
 # rate between GBP and USD is 1.5 then that means that to convert 'from' GBP 'to' USD then we must
 # multiply each pound by 1.5 to obtain the equivalent number of dollars.
 
-load 'MyLogger.rb'
-load 'MyElastic.rb'
+require_relative './MyLogger.rb'
+require_relative './MyElastic.rb'
 
 require 'optparse'
 require 'ostruct'

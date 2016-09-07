@@ -2,8 +2,8 @@
 
 $LOAD_PATH.unshift File.expand_path($0)
 
-load 'esoptions.rb'
-load 'harvest.rb'
+require_relative './esoptions.rb'
+require_relative './harvest.rb'
 
 
 #curl -u <user>:<pass> 'https://aws-us-east-1-portal9.dblayer.com:11062/_cluster/health?pretty'
